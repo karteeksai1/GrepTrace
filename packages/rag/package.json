@@ -11,6 +11,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@greptrace/core": "*"
+    "@greptrace/core": "*",
+    "@pinecone-database/pinecone": "^9.2.0"
   }
 }
