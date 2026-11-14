@@ -1,0 +1,23 @@
+{
+  "name": "greptrace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run",
+    "migrate": "tsx packages/core/src/db/migrate.ts",
+    "db:health": "tsx packages/core/src/db/health.ts",
+    "validate:questions": "tsx packages/eval/src/validate-cmd.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

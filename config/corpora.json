@@ -1,0 +1,12 @@
+{
+  "corpora": {
+    "express": {
+      "path": "corpora/express",
+      "commit": "cf6722bf89a86905281d9160b6482e08166b5ef0"
+    },
+    "fastapi": {
+      "path": "corpora/fastapi",
+      "commit": "5758a9c8347d911444dca97a55b708cc4a8de4f8"
+    }
+  }
+}
