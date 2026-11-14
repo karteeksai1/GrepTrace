@@ -1,0 +1,44 @@
+[
+  {
+    "id": "express-create-app",
+    "corpus": "express",
+    "type": "identifier_lookup",
+    "question": "Where is the createApplication function defined in Express, and how does it construct and initialize the app instance?",
+    "reference_answer": "createApplication is defined in lib/express.js. It creates an app function that delegates to app.handle(req, res, next), mixes in EventEmitter.prototype and the application prototype (proto), attaches app.request and app.response prototyped from req and res, and finally calls app.init() before returning app.",
+    "ground_truth": [
+      {
+        "file": "lib/express.js",
+        "start_line": 36,
+        "end_line": 53
+      }
+    ]
+  },
+  {
+    "id": "express-init-router",
+    "corpus": "express",
+    "type": "conceptual",
+    "question": "How does Express initialize its base router lazily inside application initialization?",
+    "reference_answer": "In lib/application.js within app.init, Express defines a property getter on the app instance for 'router' using Object.defineProperty. When this.router is first accessed, if router is null, it instantiates a new Router with caseSensitive and strict routing settings taken from the app settings.",
+    "ground_truth": [
+      {
+        "file": "lib/application.js",
+        "start_line": 56,
+        "end_line": 81
+      }
+    ]
+  },
+  {
+    "id": "express-send-content-type",
+    "corpus": "express",
+    "type": "multi_hop",
+    "question": "How does res.send in Express determine Content-Type, charset, and Content-Length for different body types?",
+    "reference_answer": "In lib/response.js within res.send, Express inspects the typeof chunk. For strings, it checks existing Content-Type and applies utf-8 charset via setCharset or defaults to html. For objects/booleans/numbers, null becomes empty string, ArrayBuffer views default to bin if no Content-Type exists, and other objects delegate to this.json(chunk). It then calculates byte length and sets Content-Length if Transfer-Encoding is absent.",
+    "ground_truth": [
+      {
+        "file": "lib/response.js",
+        "start_line": 126,
+        "end_line": 185
+      }
+    ]
+  }
+]
