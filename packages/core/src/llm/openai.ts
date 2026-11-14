@@ -12,7 +12,7 @@ export class OpenAIClient implements LLMClient {
   private defaultModel: string;
 
   constructor(options: OpenAIOptions = {}) {
-    this.apiKey = options.apiKey ?? process.env.OPENAI_API_KEY ?? '';
+    this.apiKey = options.apiKey ?? process.env.LLM_API_KEY ?? process.env.OPENAI_API_KEY ?? process.env.GROQ_API_KEY ?? '';
     this.baseUrl = (options.baseUrl ?? process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
     this.defaultModel = options.defaultModel ?? process.env.LLM_MODEL ?? 'gpt-4o-mini';
   }
@@ -22,7 +22,7 @@ export class OpenAIClient implements LLMClient {
   }
 
   private calculateCost(model: string, promptTokens: number, completionTokens: number): number {
-    const isMini = model.includes('mini');
+    const isMini = model.includes('mini') || model.includes('oss');
     const inputRate = isMini ? 0.00000015 : 0.0000025;
     const outputRate = isMini ? 0.0000006 : 0.00001;
     return Number((promptTokens * inputRate + completionTokens * outputRate).toFixed(6));
@@ -46,7 +46,7 @@ export class OpenAIClient implements LLMClient {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
+      throw new Error(`LLM API error (${response.status}): ${errorText}`);
     }
 
     const data = await response.json();

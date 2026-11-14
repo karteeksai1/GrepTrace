@@ -12,7 +12,7 @@ export class AnthropicClient implements LLMClient {
   private defaultModel: string;
 
   constructor(options: AnthropicOptions = {}) {
-    this.apiKey = options.apiKey ?? process.env.ANTHROPIC_API_KEY ?? '';
+    this.apiKey = options.apiKey ?? process.env.LLM_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? '';
     this.baseUrl = (options.baseUrl ?? process.env.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com').replace(/\/+$/, '');
     this.defaultModel = options.defaultModel ?? process.env.LLM_MODEL ?? 'claude-3-5-haiku-20241022';
   }

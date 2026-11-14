@@ -9,13 +9,19 @@ export * from './anthropic.js';
 export * from './mock.js';
 
 export function createLLMClient(provider?: string, model?: string): LLMClient {
-  const chosenProvider = provider ?? process.env.LLM_PROVIDER ?? 'openai';
+  const chosenProvider = (provider ?? process.env.LLM_PROVIDER ?? 'openai').toLowerCase();
 
   if (chosenProvider === 'mock') {
     return new MockLLMClient();
   }
   if (chosenProvider === 'anthropic') {
     return new AnthropicClient({ defaultModel: model });
+  }
+  if (chosenProvider === 'groq') {
+    return new OpenAIClient({
+      baseUrl: process.env.GROQ_BASE_URL ?? 'https://api.groq.com/openai/v1',
+      defaultModel: model
+    });
   }
   return new OpenAIClient({ defaultModel: model });
 }
