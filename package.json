@@ -11,6 +11,7 @@
     "build": "tsc -b",
     "test": "vitest run",
     "test:llm": "tsx scripts/test-llm.ts",
+    "run-agentic": "tsx packages/agentic/src/cli.ts",
     "migrate": "tsx packages/core/src/db/migrate.ts",
     "db:health": "tsx packages/core/src/db/health.ts",
     "validate:questions": "tsx packages/eval/src/validate-cmd.ts"
