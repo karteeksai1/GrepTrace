@@ -5,17 +5,24 @@ export interface OpenAIOptions {
   apiKey?: string;
   baseUrl?: string;
   defaultModel?: string;
+  maxRetries?: number;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export class OpenAIClient implements LLMClient {
   private apiKey: string;
   private baseUrl: string;
   private defaultModel: string;
+  private maxRetries: number;
 
   constructor(options: OpenAIOptions = {}) {
     this.apiKey = options.apiKey ?? process.env.LLM_API_KEY ?? process.env.OPENAI_API_KEY ?? process.env.GROQ_API_KEY ?? '';
     this.baseUrl = (options.baseUrl ?? process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
     this.defaultModel = options.defaultModel ?? process.env.LLM_MODEL ?? 'gpt-4o-mini';
+    this.maxRetries = options.maxRetries ?? 3;
   }
 
   getDefaultModel(): string {
@@ -69,6 +76,24 @@ export class OpenAIClient implements LLMClient {
     });
   }
 
+  private extractRetryDelayMs(response: Response, errorText: string): number {
+    const retryHeader = response.headers.get('retry-after');
+    if (retryHeader) {
+      const parsedSeconds = parseFloat(retryHeader);
+      if (!isNaN(parsedSeconds)) {
+        return Math.ceil(parsedSeconds * 1000);
+      }
+    }
+    const match = errorText.match(/try again in ([0-9.]+)s/i);
+    if (match && match[1]) {
+      const seconds = parseFloat(match[1]);
+      if (!isNaN(seconds)) {
+        return Math.ceil(seconds * 1000) + 500;
+      }
+    }
+    return 3000;
+  }
+
   async chat(request: LLMRequest): Promise<LLMResponse> {
     const model = request.model || this.defaultModel;
     const body: Record<string, unknown> = {
@@ -89,37 +114,50 @@ export class OpenAIClient implements LLMClient {
       }));
     }
 
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`
-      },
-      body: JSON.stringify(body)
-    });
+    let attempt = 0;
+    while (attempt <= this.maxRetries) {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`
+        },
+        body: JSON.stringify(body)
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`LLM API error (${response.status}): ${errorText}`);
+      if (response.status === 429 && attempt < this.maxRetries) {
+        attempt++;
+        const errorText = await response.text();
+        const waitMs = this.extractRetryDelayMs(response, errorText);
+        await delay(waitMs);
+        continue;
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`LLM API error (${response.status}): ${errorText}`);
+      }
+
+      const data = await response.json();
+      const message = data.choices?.[0]?.message;
+      const text = message?.content ?? '';
+      const toolCalls = this.parseToolCalls(message?.tool_calls);
+      const promptTokens = data.usage?.prompt_tokens ?? 0;
+      const completionTokens = data.usage?.completion_tokens ?? 0;
+      const totalTokens = data.usage?.total_tokens ?? (promptTokens + completionTokens);
+
+      return {
+        text,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        usage: {
+          promptTokens,
+          completionTokens,
+          totalTokens
+        },
+        costUsd: calculateCost(model, promptTokens, completionTokens)
+      };
     }
 
-    const data = await response.json();
-    const message = data.choices?.[0]?.message;
-    const text = message?.content ?? '';
-    const toolCalls = this.parseToolCalls(message?.tool_calls);
-    const promptTokens = data.usage?.prompt_tokens ?? 0;
-    const completionTokens = data.usage?.completion_tokens ?? 0;
-    const totalTokens = data.usage?.total_tokens ?? (promptTokens + completionTokens);
-
-    return {
-      text,
-      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-      usage: {
-        promptTokens,
-        completionTokens,
-        totalTokens
-      },
-      costUsd: calculateCost(model, promptTokens, completionTokens)
-    };
+    throw new Error('LLM request failed after retries.');
   }
 }
