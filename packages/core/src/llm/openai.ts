@@ -1,4 +1,5 @@
-import { LLMClient, LLMRequest, LLMResponse } from './types.js';
+import { calculateCost } from './pricing.js';
+import { ChatMessage, LLMClient, LLMRequest, LLMResponse, ToolCall } from './types.js';
 
 export interface OpenAIOptions {
   apiKey?: string;
@@ -21,27 +22,80 @@ export class OpenAIClient implements LLMClient {
     return this.defaultModel;
   }
 
-  private calculateCost(model: string, promptTokens: number, completionTokens: number): number {
-    const isMini = model.includes('mini') || model.includes('oss');
-    const inputRate = isMini ? 0.00000015 : 0.0000025;
-    const outputRate = isMini ? 0.0000006 : 0.00001;
-    return Number((promptTokens * inputRate + completionTokens * outputRate).toFixed(6));
+  private formatMessage(msg: ChatMessage): Record<string, unknown> {
+    if (msg.role === 'tool') {
+      return {
+        role: 'tool',
+        tool_call_id: msg.tool_call_id,
+        content: msg.content ?? ''
+      };
+    }
+    if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+      return {
+        role: 'assistant',
+        content: msg.content ?? null,
+        tool_calls: msg.tool_calls.map((c) => ({
+          id: c.id,
+          type: 'function',
+          function: {
+            name: c.name,
+            arguments: typeof c.arguments === 'string' ? c.arguments : JSON.stringify(c.arguments)
+          }
+        }))
+      };
+    }
+    return {
+      role: msg.role,
+      content: msg.content ?? ''
+    };
+  }
+
+  private parseToolCalls(rawCalls: Array<{ id: string; function: { name: string; arguments: string } }> | undefined): ToolCall[] {
+    if (!rawCalls || !Array.isArray(rawCalls)) {
+      return [];
+    }
+    return rawCalls.map((rc) => {
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(rc.function.arguments || '{}');
+      } catch {
+        args = { raw: rc.function.arguments };
+      }
+      return {
+        id: rc.id,
+        name: rc.function.name,
+        arguments: args
+      };
+    });
   }
 
   async chat(request: LLMRequest): Promise<LLMResponse> {
     const model = request.model || this.defaultModel;
+    const body: Record<string, unknown> = {
+      model,
+      messages: request.messages.map((m) => this.formatMessage(m)),
+      temperature: request.temperature ?? 0,
+      max_tokens: request.maxTokens ?? 2048
+    };
+
+    if (request.tools && request.tools.length > 0) {
+      body.tools = request.tools.map((t) => ({
+        type: 'function',
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters
+        }
+      }));
+    }
+
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.apiKey}`
       },
-      body: JSON.stringify({
-        model,
-        messages: request.messages,
-        temperature: request.temperature ?? 0,
-        max_tokens: request.maxTokens ?? 2048
-      })
+      body: JSON.stringify(body)
     });
 
     if (!response.ok) {
@@ -50,19 +104,22 @@ export class OpenAIClient implements LLMClient {
     }
 
     const data = await response.json();
-    const text = data.choices?.[0]?.message?.content ?? '';
+    const message = data.choices?.[0]?.message;
+    const text = message?.content ?? '';
+    const toolCalls = this.parseToolCalls(message?.tool_calls);
     const promptTokens = data.usage?.prompt_tokens ?? 0;
     const completionTokens = data.usage?.completion_tokens ?? 0;
     const totalTokens = data.usage?.total_tokens ?? (promptTokens + completionTokens);
 
     return {
       text,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       usage: {
         promptTokens,
         completionTokens,
         totalTokens
       },
-      costUsd: this.calculateCost(model, promptTokens, completionTokens)
+      costUsd: calculateCost(model, promptTokens, completionTokens)
     };
   }
 }

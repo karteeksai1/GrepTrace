@@ -4,6 +4,7 @@ import { OpenAIClient } from './openai.js';
 import { LLMClient } from './types.js';
 
 export * from './types.js';
+export * from './pricing.js';
 export * from './openai.js';
 export * from './anthropic.js';
 export * from './mock.js';

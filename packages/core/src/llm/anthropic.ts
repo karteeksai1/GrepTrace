@@ -1,4 +1,5 @@
-import { ChatMessage, LLMClient, LLMRequest, LLMResponse } from './types.js';
+import { calculateCost } from './pricing.js';
+import { ChatMessage, LLMClient, LLMRequest, LLMResponse, ToolCall } from './types.js';
 
 export interface AnthropicOptions {
   apiKey?: string;
@@ -21,19 +22,74 @@ export class AnthropicClient implements LLMClient {
     return this.defaultModel;
   }
 
-  private calculateCost(model: string, promptTokens: number, completionTokens: number): number {
-    const isHaiku = model.includes('haiku');
-    const inputRate = isHaiku ? 0.0000008 : 0.000003;
-    const outputRate = isHaiku ? 0.000004 : 0.000015;
-    return Number((promptTokens * inputRate + completionTokens * outputRate).toFixed(6));
+  private separateMessages(messages: ChatMessage[]) {
+    const system = messages
+      .filter((m) => m.role === 'system')
+      .map((m) => m.content ?? '')
+      .join('\n\n');
+
+    const formatted: Array<{ role: 'user' | 'assistant'; content: unknown }> = [];
+
+    for (const m of messages) {
+      if (m.role === 'system') {
+        continue;
+      }
+      if (m.role === 'tool') {
+        formatted.push({
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: m.tool_call_id,
+              content: m.content ?? ''
+            }
+          ]
+        });
+      } else if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
+        const blocks: Array<Record<string, unknown>> = [];
+        if (m.content) {
+          blocks.push({ type: 'text', text: m.content });
+        }
+        for (const tc of m.tool_calls) {
+          blocks.push({
+            type: 'tool_use',
+            id: tc.id,
+            name: tc.name,
+            input: tc.arguments
+          });
+        }
+        formatted.push({ role: 'assistant', content: blocks });
+      } else {
+        formatted.push({
+          role: m.role as 'user' | 'assistant',
+          content: m.content ?? ''
+        });
+      }
+    }
+
+    return { system, messages: formatted };
   }
 
-  private separateMessages(messages: ChatMessage[]) {
-    const system = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
-    const userAndAssistant = messages
-      .filter((m) => m.role !== 'system')
-      .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
-    return { system, messages: userAndAssistant };
+  private parseResponse(content: Array<{ type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }>): { text: string; toolCalls?: ToolCall[] } {
+    let text = '';
+    const toolCalls: ToolCall[] = [];
+
+    for (const block of content) {
+      if (block.type === 'text' && block.text) {
+        text += block.text;
+      } else if (block.type === 'tool_use' && block.id && block.name) {
+        toolCalls.push({
+          id: block.id,
+          name: block.name,
+          arguments: block.input ?? {}
+        });
+      }
+    }
+
+    return {
+      text,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined
+    };
   }
 
   async chat(request: LLMRequest): Promise<LLMResponse> {
@@ -48,6 +104,13 @@ export class AnthropicClient implements LLMClient {
     };
     if (system) {
       body.system = system;
+    }
+    if (request.tools && request.tools.length > 0) {
+      body.tools = request.tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        input_schema: t.parameters
+      }));
     }
 
     const response = await fetch(`${this.baseUrl}/v1/messages`, {
@@ -66,18 +129,19 @@ export class AnthropicClient implements LLMClient {
     }
 
     const data = await response.json();
-    const text = data.content?.[0]?.text ?? '';
+    const parsed = this.parseResponse(data.content ?? []);
     const promptTokens = data.usage?.input_tokens ?? 0;
     const completionTokens = data.usage?.output_tokens ?? 0;
 
     return {
-      text,
+      text: parsed.text,
+      toolCalls: parsed.toolCalls,
       usage: {
         promptTokens,
         completionTokens,
         totalTokens: promptTokens + completionTokens
       },
-      costUsd: this.calculateCost(model, promptTokens, completionTokens)
+      costUsd: calculateCost(model, promptTokens, completionTokens)
     };
   }
 }
