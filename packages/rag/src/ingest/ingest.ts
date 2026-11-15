@@ -113,7 +113,7 @@ export async function ingestCorpus(options: IngestOptions): Promise<IngestSummar
       }
     }));
 
-    await index.upsert(pineconeRecords);
+    await index.upsert({ records: pineconeRecords });
     ingestedCount += batch.length;
 
     process.stdout.write(`Progress: ${ingestedCount} / ${newChunks.length} chunks ingested...\n`);

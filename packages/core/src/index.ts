@@ -6,4 +6,6 @@ export * from './db/health.js';
 export * from './logger/trace-logger.js';
 export * from './llm/index.js';
 export * from './embedding/index.js';
+export * from './rag/prompts.js';
+export * from './rag/parser.js';
 export * from './validator/question-validator.js';
