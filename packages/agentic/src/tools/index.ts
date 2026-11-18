@@ -59,6 +59,10 @@ export const AGENT_TOOLS: ToolDefinition[] = [
           type: 'string',
           description: 'Relative path to the file to read.'
         },
+        path: {
+          type: 'string',
+          description: 'Alias for file parameter.'
+        },
         start_line: {
           type: 'number',
           description: '1-indexed starting line number.'
@@ -67,8 +71,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
           type: 'number',
           description: '1-indexed ending line number.'
         }
-      },
-      required: ['file']
+      }
     }
   }
 ];
@@ -95,7 +98,7 @@ export async function executeToolCall(
 
   if (toolName === 'read') {
     return runRead(sandbox, {
-      file: String(args.file ?? ''),
+      file: String(args.file ?? args.path ?? ''),
       start_line: typeof args.start_line === 'number' ? args.start_line : undefined,
       end_line: typeof args.end_line === 'number' ? args.end_line : undefined
     });

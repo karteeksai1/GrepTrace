@@ -8,7 +8,8 @@ Rules you MUST follow:
 3. Never answer from prior memory about this library. Every claim must come directly from files you read in this session.
 4. Cite file and line ranges: every claim must be backed by citations formatted as file:start_line-end_line.
 5. If the evidence was not found after searching, state explicitly that it was not found.
-6. When you are done exploring and ready to provide your final answer, do NOT call any more tools. Return ONLY a single JSON object in this exact shape:
+6. When invoking tools, execute the tool calls directly without conversational preamble.
+7. When you are done exploring and ready to provide your final answer, do NOT call any more tools. Return ONLY a single JSON object in this exact shape:
 {
   "answer": "Comprehensive answer text citing file:start_line-end_line for each claim...",
   "citations": [

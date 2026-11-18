@@ -16,7 +16,12 @@
     "ingest": "tsx packages/rag/src/ingest-cli.ts",
     "migrate": "tsx packages/core/src/db/migrate.ts",
     "db:health": "tsx packages/core/src/db/health.ts",
-    "validate:questions": "tsx packages/eval/src/validate-cmd.ts"
+    "validate:questions": "tsx packages/eval/src/validate-cmd.ts",
+    "bench": "tsx packages/eval/src/cli.ts bench",
+    "score": "tsx packages/eval/src/cli.ts score",
+    "report": "tsx packages/eval/src/cli.ts report",
+    "judge-sample": "tsx packages/eval/src/cli.ts judge-sample",
+    "judge-agreement": "tsx packages/eval/src/cli.ts judge-agreement"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",

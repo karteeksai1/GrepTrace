@@ -442,3 +442,201 @@ export function exportRunsCsv(rows: RunDetailRow[]): string {
 
   return lines.join('\n');
 }
+
+export function formatAsciiTable(headers: string[], rows: string[][]): string {
+  const colWidths = headers.map((h, i) =>
+    Math.max(h.length, ...rows.map((r) => (r[i] ?? '').length))
+  );
+
+  const formatRow = (cells: string[]) =>
+    cells.map((c, i) => (c ?? '').padEnd(colWidths[i])).join(' | ');
+
+  const separator = colWidths.map((w) => '-'.repeat(w)).join('-+-');
+
+  return [formatRow(headers), separator, ...rows.map((r) => formatRow(r))].join('\n');
+}
+
+export function generateAsciiSummary(summaries: GroupSummary[], h2h: HeadToHeadRow[]): string {
+  const aggHeaders = [
+    'System', 'Corpus', 'Type', 'N', 'Fail',
+    'HitAny', 'HitAll', 'Recall', 'CiteCorr', 'Score',
+    'Tokens', 'Cost', 'Latency(ms)', 'Steps', 'DbMs'
+  ];
+  const aggRows = summaries.map((s) => [
+    s.system,
+    s.corpus,
+    s.question_type,
+    String(s.total_runs),
+    String(s.failures),
+    `${(s.hit_any_rate * 100).toFixed(0)}%`,
+    `${(s.hit_all_rate * 100).toFixed(0)}%`,
+    s.mean_recall.toFixed(2),
+    `${(s.citation_correct_rate * 100).toFixed(0)}%`,
+    s.mean_score.toFixed(2),
+    `${s.mean_tokens}`,
+    `$${s.mean_cost.toFixed(4)}`,
+    `${s.mean_latency_ms}`,
+    String(s.mean_step_count),
+    s.system === 'rag' ? `${s.mean_db_time_ms}` : '-'
+  ]);
+
+  const h2hHeaders = ['Question', 'Agent Score', 'RAG Score', 'Agent HitAll', 'RAG HitAll', 'Agent Tok', 'RAG Tok', 'Agent Lat(ms)', 'RAG Lat(ms)', 'Winner'];
+  const h2hRows = h2h.map((h) => [
+    h.question_id,
+    h.agentic_score.toFixed(1),
+    h.rag_score.toFixed(1),
+    h.agentic_hit_all ? 'yes' : 'no',
+    h.rag_hit_all ? 'yes' : 'no',
+    String(h.agentic_tokens),
+    String(h.rag_tokens),
+    String(h.agentic_latency_ms),
+    String(h.rag_latency_ms),
+    h.winner.toUpperCase()
+  ]);
+
+  return [
+    '=== AGGREGATE SUMMARY ===',
+    formatAsciiTable(aggHeaders, aggRows),
+    '',
+    '=== HEAD-TO-HEAD COMPARISON ===',
+    formatAsciiTable(h2hHeaders, h2hRows)
+  ].join('\n');
+}
+
+export async function sampleRunsForJudging(
+  pool: pg.Pool,
+  batchName: string,
+  n: number,
+  rootDir: string
+): Promise<string> {
+  const rows = await fetchBatchRunRows(pool, batchName, rootDir);
+  const shuffled = [...rows].sort(() => 0.5 - Math.random());
+  const sampled = shuffled.slice(0, n);
+
+  const questionsCache: Record<string, Record<string, { question: string; reference_answer: string }>> = {};
+  for (const corpus of ['express', 'fastapi']) {
+    try {
+      const qPath = path.join(rootDir, 'data', 'questions', `${corpus}.json`);
+      const raw = await fs.readFile(qPath, 'utf8');
+      const list = JSON.parse(raw);
+      questionsCache[corpus] = {};
+      for (const q of list) {
+        questionsCache[corpus][q.id] = q;
+      }
+    } catch {
+      questionsCache[corpus] = {};
+    }
+  }
+
+  const headers = [
+    'run_id', 'corpus', 'question_id', 'question', 'reference_answer',
+    'candidate_answer', 'citations', 'judge_verdict', 'judge_reason', 'human_verdict'
+  ];
+
+  const lines = [headers.join(',')];
+  for (const r of sampled) {
+    const q = questionsCache[r.corpus]?.[r.question_id];
+    const payload = parseRunFinalAnswer(r.final_answer);
+    const citStr = (payload.citations || []).map((c) => `${c.file}:${c.start_line}-${c.end_line}`).join('; ');
+
+    lines.push([
+      escapeCsv(r.run_id),
+      escapeCsv(r.corpus),
+      escapeCsv(r.question_id),
+      escapeCsv(q?.question ?? ''),
+      escapeCsv(q?.reference_answer ?? ''),
+      escapeCsv(payload.answer || r.final_answer),
+      escapeCsv(citStr),
+      escapeCsv(r.judge_verdict),
+      escapeCsv(r.judge_reason),
+      ''
+    ].join(','));
+  }
+
+  return lines.join('\n');
+}
+
+export interface AgreementReport {
+  total: number;
+  agreed: number;
+  agreementRate: number;
+  confusionMatrix: Record<string, Record<string, number>>;
+}
+
+export function computeJudgeAgreement(csvContent: string): AgreementReport {
+  const lines = csvContent.trim().split('\n');
+  if (lines.length <= 1) {
+    return {
+      total: 0,
+      agreed: 0,
+      agreementRate: 0,
+      confusionMatrix: {
+        correct: { correct: 0, partial: 0, incorrect: 0 },
+        partial: { correct: 0, partial: 0, incorrect: 0 },
+        incorrect: { correct: 0, partial: 0, incorrect: 0 }
+      }
+    };
+  }
+
+  const parseCsvLine = (line: string): string[] => {
+    const result: string[] = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(cur);
+        cur = '';
+      } else {
+        cur += char;
+      }
+    }
+    result.push(cur);
+    return result;
+  };
+
+  const headers = parseCsvLine(lines[0]);
+  const judgeIdx = headers.indexOf('judge_verdict');
+  const humanIdx = headers.indexOf('human_verdict');
+
+  if (judgeIdx === -1 || humanIdx === -1) {
+    throw new Error('CSV must contain judge_verdict and human_verdict columns');
+  }
+
+  const matrix: Record<string, Record<string, number>> = {
+    correct: { correct: 0, partial: 0, incorrect: 0 },
+    partial: { correct: 0, partial: 0, incorrect: 0 },
+    incorrect: { correct: 0, partial: 0, incorrect: 0 }
+  };
+
+  let total = 0;
+  let agreed = 0;
+
+  for (let i = 1; i < lines.length; i++) {
+    const row = parseCsvLine(lines[i]);
+    const jv = row[judgeIdx]?.trim().toLowerCase();
+    const hv = row[humanIdx]?.trim().toLowerCase();
+    if (!jv || !hv || !matrix[jv] || matrix[jv][hv] === undefined) continue;
+
+    total++;
+    matrix[jv][hv]++;
+    if (jv === hv) {
+      agreed++;
+    }
+  }
+
+  const rate = total > 0 ? Number((agreed / total).toFixed(4)) : 0;
+  return {
+    total,
+    agreed,
+    agreementRate: rate,
+    confusionMatrix: matrix
+  };
+}

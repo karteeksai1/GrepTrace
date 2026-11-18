@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import pg from 'pg';
 import { GroundTruthLocation, LLMClient, Question, Run, ScoreRecord } from '@greptrace/core';
 import { judgeAnswer } from './judge.js';
@@ -182,4 +184,70 @@ export async function scoreRun(
     judge_cost_usd: row.judge_cost_usd ? Number(row.judge_cost_usd) : null,
     scored_at: row.scored_at
   };
+}
+
+export async function scoreBatch(
+  pool: pg.Pool,
+  batchName: string,
+  rejudge: boolean,
+  judgeClient: LLMClient,
+  judgeModel: string,
+  rootDir: string
+): Promise<{ scored: number; total: number }> {
+  const batchRes = await pool.query('SELECT id FROM batches WHERE name = $1', [batchName]);
+  if (batchRes.rows.length === 0) {
+    throw new Error(`Batch '${batchName}' not found`);
+  }
+  const batchId = batchRes.rows[0].id;
+
+  const runsRes = await pool.query(
+    `SELECT r.* FROM runs r
+     LEFT JOIN scores s ON r.id = s.run_id
+     WHERE r.batch_id = $1
+     ${rejudge ? '' : 'AND s.id IS NULL'}
+     ORDER BY r.started_at ASC`,
+    [batchId]
+  );
+
+  const questionsCache: Record<string, Record<string, Question>> = {};
+  for (const corpus of ['express', 'fastapi']) {
+    try {
+      const qPath = path.join(rootDir, 'data', 'questions', `${corpus}.json`);
+      const raw = await fs.readFile(qPath, 'utf8');
+      const list = JSON.parse(raw);
+      questionsCache[corpus] = {};
+      for (const q of list) {
+        questionsCache[corpus][q.id] = q;
+      }
+    } catch {
+      questionsCache[corpus] = {};
+    }
+  }
+
+  let scored = 0;
+  for (const r of runsRes.rows) {
+    const q = questionsCache[r.corpus]?.[r.question_id];
+    if (!q) {
+      continue;
+    }
+    const run: Run = {
+      id: r.id,
+      system: r.system,
+      corpus: r.corpus,
+      question_id: r.question_id,
+      model: r.model,
+      started_at: r.started_at,
+      finished_at: r.finished_at,
+      status: r.status,
+      final_answer: r.final_answer,
+      total_tokens: r.total_tokens,
+      cost_usd: r.cost_usd ? Number(r.cost_usd) : 0,
+      batch_id: r.batch_id,
+      repetition: r.repetition
+    };
+    await scoreRun(pool, run, q, judgeClient, judgeModel, rejudge);
+    scored++;
+  }
+
+  return { scored, total: runsRes.rows.length };
 }

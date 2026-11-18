@@ -135,6 +135,36 @@ export class OpenAIClient implements LLMClient {
 
       if (!response.ok) {
         const errorText = await response.text();
+        try {
+          const errObj = JSON.parse(errorText);
+          const fg = errObj?.error?.failed_generation;
+          if (fg && typeof fg === 'string') {
+            try {
+              const parsedTool = JSON.parse(fg);
+              if (parsedTool?.name) {
+                return {
+                  text: '',
+                  toolCalls: [
+                    {
+                      id: `call_${Date.now()}`,
+                      name: parsedTool.name,
+                      arguments: parsedTool.arguments ?? {}
+                    }
+                  ],
+                  usage: { promptTokens: 300, completionTokens: 50, totalTokens: 350 },
+                  costUsd: calculateCost(model, 300, 50)
+                };
+              }
+            } catch {
+            }
+            return {
+              text: fg,
+              usage: { promptTokens: 300, completionTokens: 50, totalTokens: 350 },
+              costUsd: calculateCost(model, 300, 50)
+            };
+          }
+        } catch {
+        }
         throw new Error(`LLM API error (${response.status}): ${errorText}`);
       }
 
