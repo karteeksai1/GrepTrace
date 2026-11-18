@@ -13,6 +13,8 @@ export interface AgentRunOptions {
   llmClient: LLMClient;
   logger: TraceLogger;
   maxOutputBytes?: number;
+  batchId?: string | null;
+  repetition?: number | null;
 }
 
 export interface AgentRunResult {
@@ -36,7 +38,9 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
     system: 'agentic',
     corpus: options.corpus,
     question_id: options.questionId ?? 'ad-hoc',
-    model: activeModel
+    model: activeModel,
+    batch_id: options.batchId ?? null,
+    repetition: options.repetition ?? null
   });
 
   const messages: ChatMessage[] = [

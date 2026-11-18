@@ -8,6 +8,8 @@ export interface StartRunParams {
   corpus: string;
   question_id: string;
   model: string;
+  batch_id?: string | null;
+  repetition?: number | null;
 }
 
 export interface FinishRunParams {
@@ -35,11 +37,19 @@ export class TraceLogger {
       this.runId = params.id;
     }
     const query = `
-      INSERT INTO runs (id, system, corpus, question_id, model, started_at, status, total_tokens, cost_usd)
-      VALUES ($1, $2, $3, $4, $5, NOW(), 'running', 0, 0)
+      INSERT INTO runs (id, system, corpus, question_id, model, started_at, status, total_tokens, cost_usd, batch_id, repetition)
+      VALUES ($1, $2, $3, $4, $5, NOW(), 'running', 0, 0, $6, $7)
       RETURNING id;
     `;
-    const values = [this.runId, params.system, params.corpus, params.question_id, params.model];
+    const values = [
+      this.runId,
+      params.system,
+      params.corpus,
+      params.question_id,
+      params.model,
+      params.batch_id ?? null,
+      params.repetition ?? null
+    ];
     await this.pool.query(query, values);
     return this.runId;
   }

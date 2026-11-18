@@ -31,6 +31,8 @@ export interface Run {
   final_answer?: string | null;
   total_tokens: number;
   cost_usd: number;
+  batch_id?: string | null;
+  repetition?: number | null;
 }
 
 export interface EventInput {
@@ -59,4 +61,40 @@ export interface CorpusSpec {
 
 export interface CorporaConfig {
   corpora: Record<string, CorpusSpec>;
+}
+
+export interface BatchConfig {
+  systems: SystemType[];
+  corpora: string[];
+  models: string[];
+  repetitions: number;
+  top_k?: number;
+  max_steps?: number;
+  git_commit_benchmark: string;
+  git_commits_corpora: Record<string, string>;
+}
+
+export interface BatchRecord {
+  id: string;
+  name: string;
+  created_at: Date;
+  config: BatchConfig;
+}
+
+export type JudgeVerdict = 'correct' | 'partial' | 'incorrect';
+
+export interface ScoreRecord {
+  id: string;
+  run_id: string;
+  retrieval_hit_any: boolean;
+  retrieval_hit_all: boolean;
+  retrieval_recall: number;
+  citation_correct: boolean;
+  answer_score: number;
+  judge_verdict: JudgeVerdict;
+  judge_reason: string;
+  judge_model: string;
+  judge_tokens: number;
+  judge_cost_usd?: number | null;
+  scored_at: Date;
 }

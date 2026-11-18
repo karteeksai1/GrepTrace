@@ -22,7 +22,9 @@ describe('TraceLogger', () => {
       'agentic',
       'express',
       'q-1',
-      'gpt-4o'
+      'gpt-4o',
+      null,
+      null
     ]);
   });
 

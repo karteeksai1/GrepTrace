@@ -24,6 +24,8 @@ export interface RagRunOptions {
   embeddingClient: EmbeddingClient;
   llmClient: LLMClient;
   logger: TraceLogger;
+  batchId?: string | null;
+  repetition?: number | null;
 }
 
 export interface RagRunResult {
@@ -48,7 +50,9 @@ export async function runRagPipeline(options: RagRunOptions): Promise<RagRunResu
     system: 'rag',
     corpus: options.corpus,
     question_id: options.questionId ?? 'ad-hoc',
-    model: activeModel
+    model: activeModel,
+    batch_id: options.batchId ?? null,
+    repetition: options.repetition ?? null
   });
 
   let step = 0;
