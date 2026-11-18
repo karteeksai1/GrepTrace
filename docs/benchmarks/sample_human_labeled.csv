@@ -1,0 +1,6 @@
+run_id,corpus,question_id,question,reference_answer,candidate_answer,citations,judge_verdict,judge_reason,human_verdict
+5e59d29f,express,q1,Q,Ref,Cand,Cit,correct,Good,correct
+92120216,express,q1,Q,Ref,Cand,Cit,correct,Good,correct
+7c704219,express,q3,Q,Ref,Cand,Cit,correct,Good,partial
+25a09a22,express,q2,Q,Ref,Cand,Cit,correct,Good,correct
+30399158,express,q2,Q,Ref,Cand,Cit,incorrect,Failed,incorrect
