@@ -88,7 +88,7 @@ export const ReplayScrubber: React.FC<ReplayScrubberProps> = ({
 
           <button
             onClick={() => setIsPlaying(!isPlaying)}
-            className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs flex items-center gap-1.5 shadow-sm transition-colors"
+            className="px-3.5 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white font-medium text-xs flex items-center gap-1.5 shadow-sm transition-colors"
             title="Play / Pause (Space)"
             aria-label={isPlaying ? 'Pause' : 'Play'}
           >
@@ -140,7 +140,7 @@ export const ReplayScrubber: React.FC<ReplayScrubberProps> = ({
               <button
                 key={s}
                 onClick={() => setSpeed(s)}
-                className={`px-2 py-1 text-[11px] font-bold rounded ${speed === s ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300' : 'text-slate-500 hover:text-slate-800'}`}
+                className={`px-2 py-1 text-[11px] font-bold rounded ${speed === s ? 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300' : 'text-slate-500 hover:text-slate-800'}`}
               >
                 {s}x
               </button>
@@ -174,7 +174,7 @@ export const ReplayScrubber: React.FC<ReplayScrubberProps> = ({
           max={totalSteps}
           value={currentStep}
           onChange={(e) => onStepChange(parseInt(e.target.value, 10))}
-          className="w-full accent-indigo-600 dark:accent-indigo-500 cursor-pointer"
+          className="w-full accent-orange-600 dark:accent-orange-500 cursor-pointer"
           aria-label="Replay scrub bar"
         />
       </div>

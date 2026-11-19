@@ -90,7 +90,7 @@ export const QuestionTable: React.FC<QuestionTableProps> = ({ batchId, questions
 
   const getHitBadge = (hitAll: boolean) => {
     return hitAll ? (
-      <span className="inline-flex items-center px-1 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300" title="Retrieved all ground truth ranges">
+      <span className="inline-flex items-center px-1 py-0.5 rounded text-[10px] font-medium bg-cyan-100 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300" title="Retrieved all ground truth ranges">
         HitAll
       </span>
     ) : (
@@ -103,7 +103,7 @@ export const QuestionTable: React.FC<QuestionTableProps> = ({ batchId, questions
   const getWinnerBadge = (winner: 'agentic' | 'rag' | 'tie') => {
     if (winner === 'agentic') {
       return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300">
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-orange-100 text-orange-700 dark:bg-orange-950/80 dark:text-orange-300">
           AGENTIC
         </span>
       );
@@ -131,13 +131,13 @@ export const QuestionTable: React.FC<QuestionTableProps> = ({ batchId, questions
             placeholder="Search questions..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full sm:w-60 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full sm:w-60 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
           />
 
           <select
             value={corpusFilter}
             onChange={(e) => setCorpusFilter(e.target.value)}
-            className="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
             aria-label="Filter by corpus"
           >
             <option value="all">All Corpora</option>
@@ -149,7 +149,7 @@ export const QuestionTable: React.FC<QuestionTableProps> = ({ batchId, questions
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
             aria-label="Filter by question type"
           >
             <option value="all">All Types</option>
@@ -161,7 +161,7 @@ export const QuestionTable: React.FC<QuestionTableProps> = ({ batchId, questions
           <select
             value={outcomeFilter}
             onChange={(e) => setOutcomeFilter(e.target.value as OutcomeFilter)}
-            className="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
             aria-label="Filter by outcome"
           >
             <option value="all">All Outcomes</option>
@@ -211,11 +211,11 @@ export const QuestionTable: React.FC<QuestionTableProps> = ({ batchId, questions
                         handleRowClick(q.question_id);
                       }
                     }}
-                    className="hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer transition-colors focus:outline-none focus:bg-indigo-50/50 dark:focus:bg-indigo-950/30"
+                    className="hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer transition-colors focus:outline-none focus:bg-orange-50/50 dark:focus:bg-orange-950/30"
                   >
                     <td className="py-3 px-4 font-mono font-medium text-slate-900 dark:text-slate-100">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-indigo-600 dark:text-indigo-400">#</span>
+                        <span className="text-xs text-orange-600 dark:text-orange-400">#</span>
                         <span>{q.question_id}</span>
                       </div>
                       {q.corpus && (

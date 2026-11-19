@@ -78,7 +78,7 @@ export const BatchDetailsPanel: React.FC<BatchDetailsPanelProps> = ({
           </div>
           <div className="font-mono text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
             <div className="truncate">
-              <span className="text-indigo-600 dark:text-indigo-400 font-semibold">benchmark:</span>{' '}
+              <span className="text-orange-600 dark:text-orange-400 font-semibold">benchmark:</span>{' '}
               {config.git_commit_benchmark ? config.git_commit_benchmark.slice(0, 10) : 'unknown'}
             </div>
             {config.git_commits_corpora &&

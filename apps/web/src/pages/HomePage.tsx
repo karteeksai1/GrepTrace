@@ -58,7 +58,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   if (isLoadingBatches) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 flex flex-col items-center justify-center gap-3">
-        <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-orange-600 border-t-transparent rounded-full animate-spin" />
         <p className="text-sm text-slate-500 dark:text-slate-400">Loading benchmark batches...</p>
       </div>
     );
@@ -105,8 +105,8 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400 block">Agentic Wins</span>
-          <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-1 block">
+          <span className="text-xs font-medium text-orange-600 dark:text-orange-400 block">Agentic Wins</span>
+          <span className="text-2xl font-bold text-orange-600 dark:text-orange-400 mt-1 block">
             {metrics.agenticWins}
           </span>
         </div>
@@ -126,8 +126,8 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm col-span-2 sm:col-span-1">
-          <span className="text-xs font-medium text-blue-600 dark:text-blue-400 block">Both Correct</span>
-          <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1 block">
+          <span className="text-xs font-medium text-cyan-600 dark:text-cyan-400 block">Both Correct</span>
+          <span className="text-2xl font-bold text-cyan-600 dark:text-cyan-400 mt-1 block">
             {metrics.bothCorrect}
           </span>
         </div>
@@ -135,7 +135,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       {isLoadingQuestions ? (
         <div className="py-12 flex flex-col items-center justify-center gap-3">
-          <div className="w-6 h-6 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-3 border-orange-600 border-t-transparent rounded-full animate-spin" />
           <p className="text-sm text-slate-500 dark:text-slate-400">Loading benchmark questions...</p>
         </div>
       ) : questionsError ? (

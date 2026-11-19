@@ -72,7 +72,7 @@ export const ComparePage: React.FC = () => {
   if (isLoadingBatch) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-16 flex flex-col items-center justify-center gap-3">
-        <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-orange-600 border-t-transparent rounded-full animate-spin" />
         <p className="text-sm text-slate-500">Loading comparison data...</p>
       </div>
     );
@@ -87,7 +87,7 @@ export const ComparePage: React.FC = () => {
         </p>
         <Link
           to={`/?batch=${encodeURIComponent(batchParam)}`}
-          className="mt-4 inline-block text-sm text-indigo-600 hover:underline"
+          className="mt-4 inline-block text-sm text-orange-600 hover:underline"
         >
           ← Return to Question List
         </Link>
@@ -100,7 +100,7 @@ export const ComparePage: React.FC = () => {
       <div>
         <Link
           to={`/?batch=${encodeURIComponent(batchParam)}`}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline mb-3"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-orange-600 dark:text-orange-400 hover:underline mb-3"
         >
           <span>←</span>
           <span>Back to Question List</span>
@@ -111,7 +111,7 @@ export const ComparePage: React.FC = () => {
             <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
               {questionRow.question_id}
             </span>
-            <span className="text-xs px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 font-medium">
+            <span className="text-xs px-2 py-0.5 rounded bg-orange-50 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300 font-medium">
               Corpus: {corpus}
             </span>
             <span className="text-xs px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-medium">
@@ -173,7 +173,7 @@ export const ComparePage: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         <CompareColumn
           title="Agentic Search (Grep + Glob + Read)"
-          badgeColor="bg-indigo-600 dark:bg-indigo-400"
+          badgeColor="bg-orange-600 dark:bg-orange-400"
           runDetail={agenticRunDetail}
           eventsData={agenticEvents}
           isLoading={isLoadingAgentic}

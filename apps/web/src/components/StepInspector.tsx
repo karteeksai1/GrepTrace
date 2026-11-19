@@ -66,7 +66,7 @@ export const StepInspector: React.FC<StepInspectorProps> = ({ node, onInspectFil
                   );
                 }
               }}
-              className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:hover:bg-indigo-900 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 dark:bg-orange-950 dark:hover:bg-orange-900 dark:text-orange-300 border border-orange-200 dark:border-orange-800 text-xs font-semibold transition-colors"
             >
               Inspect Source Lines in Code Panel ↗
             </button>

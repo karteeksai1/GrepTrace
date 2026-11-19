@@ -98,7 +98,7 @@ export const ReplayPage: React.FC = () => {
   if (isLoadingRun || isLoadingEvents) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-16 flex flex-col items-center justify-center gap-3">
-        <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-orange-600 border-t-transparent rounded-full animate-spin" />
         <p className="text-sm text-slate-500">Loading trajectory replay...</p>
       </div>
     );
@@ -111,7 +111,7 @@ export const ReplayPage: React.FC = () => {
         <p className="text-sm text-slate-500 mt-1">
           {runError ? (runError as Error).message : `Run ${runId} was not found.`}
         </p>
-        <Link to="/" className="mt-4 inline-block text-sm text-indigo-600 hover:underline">
+        <Link to="/" className="mt-4 inline-block text-sm text-orange-600 hover:underline">
           ← Return to Benchmark Runs
         </Link>
       </div>
@@ -126,7 +126,7 @@ export const ReplayPage: React.FC = () => {
         <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
           <Link
             to={run.batch_id ? `/?batch=${encodeURIComponent(run.batch_id)}` : '/'}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-orange-600 dark:text-orange-400 hover:underline"
           >
             <span>←</span>
             <span>Back to Benchmark Runs</span>
@@ -137,7 +137,7 @@ export const ReplayPage: React.FC = () => {
               Run: {run.id.slice(0, 8)}...
             </span>
             <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-md ${
-              run.system === 'agentic' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+              run.system === 'agentic' ? 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
             }`}>
               {run.system}
             </span>

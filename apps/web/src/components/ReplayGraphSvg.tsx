@@ -47,16 +47,16 @@ export const ReplayGraphSvg: React.FC<ReplayGraphSvgProps> = ({
     }
     if (node.type === 'question') {
       return {
-        bg: 'fill-blue-50 dark:fill-blue-950/40',
-        border: 'stroke-blue-400 dark:stroke-blue-600',
-        text: 'text-blue-700 dark:text-blue-300'
+        bg: 'fill-cyan-50 dark:fill-cyan-950/40',
+        border: 'stroke-cyan-400 dark:stroke-cyan-600',
+        text: 'text-cyan-700 dark:text-cyan-300'
       };
     }
     if (node.type === 'final_answer') {
       return {
-        bg: 'fill-indigo-50 dark:fill-indigo-950/40',
-        border: 'stroke-indigo-500 dark:stroke-indigo-500',
-        text: 'text-indigo-700 dark:text-indigo-300'
+        bg: 'fill-orange-50 dark:fill-orange-950/40',
+        border: 'stroke-orange-500 dark:stroke-orange-500',
+        text: 'text-orange-700 dark:text-orange-300'
       };
     }
     return {
@@ -142,7 +142,7 @@ export const ReplayGraphSvg: React.FC<ReplayGraphSvgProps> = ({
                   width={nodeWidth}
                   height={nodeHeight}
                   rx="10"
-                  className={`${colors.bg} ${isSelected ? 'stroke-indigo-600 dark:stroke-indigo-400 stroke-[3]' : colors.border} ${isLatest ? 'filter drop-shadow-md' : ''}`}
+                  className={`${colors.bg} ${isSelected ? 'stroke-orange-600 dark:stroke-orange-400 stroke-[3]' : colors.border} ${isLatest ? 'filter drop-shadow-md' : ''}`}
                 />
 
                 <rect

@@ -44,14 +44,14 @@ export const RagReplayView: React.FC<RagReplayViewProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
             <span className="text-xs font-semibold text-slate-500 block">Total Retrieval</span>
-            <span className="text-xl font-bold font-mono text-indigo-600 dark:text-indigo-400 mt-1 block">
+            <span className="text-xl font-bold font-mono text-orange-600 dark:text-orange-400 mt-1 block">
               {totalRetrievalMs}ms
             </span>
           </div>
 
           <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
             <span className="text-xs font-semibold text-slate-500 block">Pinecone Vector Search</span>
-            <span className="text-xl font-bold font-mono text-indigo-600 dark:text-indigo-400 mt-1 block">
+            <span className="text-xl font-bold font-mono text-orange-600 dark:text-orange-400 mt-1 block">
               {vectorQueryMs}ms
             </span>
           </div>
@@ -120,7 +120,7 @@ export const RagReplayView: React.FC<RagReplayViewProps> = ({
                       {onInspectChunk && (
                         <button
                           onClick={() => onInspectChunk(c.file, c.start_line, c.end_line)}
-                          className="px-2.5 py-1 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                          className="px-2.5 py-1 text-xs font-medium text-orange-600 dark:text-orange-400 hover:underline"
                         >
                           View Lines ↗
                         </button>

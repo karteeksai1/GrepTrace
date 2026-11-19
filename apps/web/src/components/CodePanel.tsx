@@ -41,7 +41,7 @@ export const CodePanel: React.FC<CodePanelProps> = ({
       case 'ground_truth':
         return 'bg-amber-500/15 dark:bg-amber-500/25 border-l-4 border-amber-500 text-amber-950 dark:text-amber-100';
       case 'citation':
-        return 'bg-indigo-500/15 dark:bg-indigo-500/25 border-l-4 border-indigo-500 text-indigo-950 dark:text-indigo-100';
+        return 'bg-orange-500/15 dark:bg-orange-500/25 border-l-4 border-orange-500 text-orange-950 dark:text-orange-100';
       default:
         return 'border-l-4 border-transparent text-slate-800 dark:text-slate-300';
     }
@@ -63,7 +63,7 @@ export const CodePanel: React.FC<CodePanelProps> = ({
         );
       case 'citation':
         return (
-          <span className="ml-2 text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-950/80 px-1.5 py-0.2 rounded">
+          <span className="ml-2 text-[10px] font-bold uppercase tracking-wider text-orange-700 dark:text-orange-300 bg-orange-100 dark:bg-orange-950/80 px-1.5 py-0.2 rounded">
             Cited
           </span>
         );
@@ -76,7 +76,7 @@ export const CodePanel: React.FC<CodePanelProps> = ({
     <div className="bg-slate-900 text-slate-100 rounded-xl border border-slate-700 shadow-xl overflow-hidden my-6">
       <div className="flex flex-wrap items-center justify-between px-4 py-3 bg-slate-800/80 border-b border-slate-700 gap-2">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-sm font-semibold text-indigo-300">
+          <span className="font-mono text-sm font-semibold text-orange-300">
             {corpus} / {filePath}:{startLine}-{endLine}
           </span>
           <div className="hidden sm:flex items-center gap-3 text-xs">
@@ -84,8 +84,8 @@ export const CodePanel: React.FC<CodePanelProps> = ({
               <span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />
               Ground Truth
             </span>
-            <span className="inline-flex items-center gap-1.5 text-indigo-300">
-              <span className="w-2.5 h-2.5 rounded-sm bg-indigo-500 inline-block" />
+            <span className="inline-flex items-center gap-1.5 text-orange-300">
+              <span className="w-2.5 h-2.5 rounded-sm bg-orange-500 inline-block" />
               Citation
             </span>
             <span className="inline-flex items-center gap-1.5 text-emerald-300 font-semibold">

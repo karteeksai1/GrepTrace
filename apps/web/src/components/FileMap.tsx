@@ -33,7 +33,7 @@ export const FileMap: React.FC<FileMapProps> = ({ files, onSelectFile }) => {
               fv.isGroundTruth
                 ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-950 dark:text-emerald-200'
                 : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200'
-            } ${onSelectFile ? 'cursor-pointer hover:border-indigo-400' : ''}`}
+            } ${onSelectFile ? 'cursor-pointer hover:border-orange-400' : ''}`}
           >
             <div className="flex items-center gap-2.5 truncate">
               <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-700 dark:text-slate-300 shrink-0">

@@ -23,7 +23,7 @@ export const CompareColumn: React.FC<CompareColumnProps> = ({
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col items-center justify-center min-h-[400px]">
-        <div className="w-6 h-6 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin mb-2" />
+        <div className="w-6 h-6 border-3 border-orange-600 border-t-transparent rounded-full animate-spin mb-2" />
         <span className="text-xs text-slate-500">Loading {title}...</span>
       </div>
     );
@@ -119,7 +119,7 @@ export const CompareColumn: React.FC<CompareColumnProps> = ({
             <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700/60 flex items-center gap-4 text-xs font-mono">
               <div>
                 <span className="text-slate-500 dark:text-slate-400">Vector Search:</span>{' '}
-                <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{vectorTimeMs}ms</span>
+                <span className="text-orange-600 dark:text-orange-400 font-semibold">{vectorTimeMs}ms</span>
               </div>
               <div>
                 <span className="text-slate-500 dark:text-slate-400">Database Fetch:</span>{' '}
@@ -161,10 +161,10 @@ export const CompareColumn: React.FC<CompareColumnProps> = ({
                   <button
                     key={`${c.file}:${c.start_line}-${c.end_line}-${i}`}
                     onClick={() => onSelectRange(c.file, c.start_line, c.end_line)}
-                    className="inline-flex items-center gap-1 font-mono text-xs px-2.5 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 transition-colors"
+                    className="inline-flex items-center gap-1 font-mono text-xs px-2.5 py-1 rounded-md bg-orange-50 hover:bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:hover:bg-orange-900/60 dark:text-orange-300 border border-orange-200 dark:border-orange-800 transition-colors"
                   >
                     <span>{c.file}:{c.start_line}-{c.end_line}</span>
-                    <span className="text-[10px] text-indigo-400">↗</span>
+                    <span className="text-[10px] text-orange-400">↗</span>
                   </button>
                 ))}
               </div>
@@ -176,7 +176,7 @@ export const CompareColumn: React.FC<CompareColumnProps> = ({
       <div className="p-4 bg-slate-50 dark:bg-slate-800/40 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end">
         <Link
           to={`/runs/${encodeURIComponent(run.id)}`}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white dark:bg-indigo-500 dark:hover:bg-indigo-600 shadow-sm transition-colors"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-orange-600 hover:bg-orange-700 text-white dark:bg-orange-500 dark:hover:bg-orange-600 shadow-sm transition-colors"
         >
           <span>View Full Replay</span>
           <span>→</span>
