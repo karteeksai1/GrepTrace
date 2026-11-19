@@ -61,4 +61,23 @@ describe('LLM attempt measurement', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
     fetchMock.mockRestore();
   });
+
+  it('classifies transient server and non-retryable errors', async () => {
+    const transientFetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('{"error":{"message":"busy"}}', { status: 503 }))
+      .mockResolvedValueOnce(successResponse());
+    const transientClient = new OpenAIClient({ baseUrl: 'https://groq.test', maxRetries: 1 });
+    const transientResponse = await transientClient.chat({ messages: [{ role: 'user', content: 'hello' }] });
+    expect(transientFetch).toHaveBeenCalledTimes(2);
+    expect(transientResponse.failedAttempts?.[0]?.reason).toBe('transient_server');
+    transientFetch.mockRestore();
+
+    const otherFetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{"error":{"message":"unauthorized"}}', { status: 401 }));
+    const otherClient = new OpenAIClient({ baseUrl: 'https://groq.test', maxRetries: 3 });
+    const error = await otherClient.chat({ messages: [{ role: 'user', content: 'hello' }] }).catch((value) => value as LLMRequestError);
+    expect(otherFetch).toHaveBeenCalledTimes(1);
+    expect(error.failedAttempts[0].reason).toBe('other_error');
+    otherFetch.mockRestore();
+  });
 });
