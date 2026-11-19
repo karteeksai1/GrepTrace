@@ -21,7 +21,9 @@
     "score": "tsx packages/eval/src/cli.ts score",
     "report": "tsx packages/eval/src/cli.ts report",
     "judge-sample": "tsx packages/eval/src/cli.ts judge-sample",
-    "judge-agreement": "tsx packages/eval/src/cli.ts judge-agreement"
+    "judge-agreement": "tsx packages/eval/src/cli.ts judge-agreement",
+    "api": "tsx apps/api/src/index.ts",
+    "web": "npm --workspace=@greptrace/web run dev"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",

@@ -93,7 +93,7 @@ export async function fetchBatchRunRows(pool: pg.Pool, batchName: string, rootDi
     FROM runs r
     INNER JOIN batches b ON r.batch_id = b.id
     LEFT JOIN scores s ON r.id = s.run_id
-    WHERE b.name = $1
+    WHERE b.id::text = $1 OR b.name = $1
     ORDER BY r.question_id, r.system, r.repetition;
   `;
   const result = await pool.query(query, [batchName]);
@@ -266,12 +266,18 @@ export function formatAggregateMarkdownTable(summaries: GroupSummary[]): string 
 
 export interface HeadToHeadRow {
   question_id: string;
+  corpus?: string;
+  question_type?: string;
+  agentic_run_id?: string;
+  rag_run_id?: string;
   agentic_score: number;
   rag_score: number;
   agentic_hit_all: boolean;
   rag_hit_all: boolean;
   agentic_tokens: number;
   rag_tokens: number;
+  agentic_cost_usd?: number;
+  rag_cost_usd?: number;
   agentic_latency_ms: number;
   rag_latency_ms: number;
   winner: 'agentic' | 'rag' | 'tie';
@@ -308,12 +314,18 @@ export function buildHeadToHead(rows: RunDetailRow[]): HeadToHeadRow[] {
 
     h2h.push({
       question_id: qid,
+      corpus: a.corpus || r.corpus,
+      question_type: a.question_type || r.question_type,
+      agentic_run_id: a.run_id,
+      rag_run_id: r.run_id,
       agentic_score: a.answer_score,
       rag_score: r.answer_score,
       agentic_hit_all: a.retrieval_hit_all,
       rag_hit_all: r.retrieval_hit_all,
       agentic_tokens: a.total_tokens,
       rag_tokens: r.total_tokens,
+      agentic_cost_usd: a.cost_usd,
+      rag_cost_usd: r.cost_usd,
       agentic_latency_ms: a.latency_ms,
       rag_latency_ms: r.latency_ms,
       winner

@@ -1,43 +1,204 @@
 [
   {
-    "id": "express-create-app",
+    "id": "exp-001",
     "corpus": "express",
     "type": "identifier_lookup",
-    "question": "Where is the createApplication function defined in Express, and how does it construct and initialize the app instance?",
-    "reference_answer": "createApplication is defined in lib/express.js. It creates an app function that delegates to app.handle(req, res, next), mixes in EventEmitter.prototype and the application prototype (proto), attaches app.request and app.response prototyped from req and res, and finally calls app.init() before returning app.",
+    "question": "Which function creates an Express application, and where inside it is app.init() called?",
+    "reference_answer": "createApplication in lib/express.js builds the app function, mixes in EventEmitter and the application prototype, sets up request and response prototypes, then calls app.init() before returning the app.",
     "ground_truth": [
       {
         "file": "lib/express.js",
         "start_line": 36,
-        "end_line": 53
+        "end_line": 56
       }
     ]
   },
   {
-    "id": "express-init-router",
+    "id": "exp-002",
     "corpus": "express",
-    "type": "conceptual",
-    "question": "How does Express initialize its base router lazily inside application initialization?",
-    "reference_answer": "In lib/application.js within app.init, Express defines a property getter on the app instance for 'router' using Object.defineProperty. When this.router is first accessed, if router is null, it instantiates a new Router with caseSensitive and strict routing settings taken from the app settings.",
-    "ground_truth": [
-      {
-        "file": "lib/application.js",
-        "start_line": 56,
-        "end_line": 81
-      }
-    ]
-  },
-  {
-    "id": "express-send-content-type",
-    "corpus": "express",
-    "type": "multi_hop",
-    "question": "How does res.send in Express determine Content-Type, charset, and Content-Length for different body types?",
-    "reference_answer": "In lib/response.js within res.send, Express inspects the typeof chunk. For strings, it checks existing Content-Type and applies utf-8 charset via setCharset or defaults to html. For objects/booleans/numbers, null becomes empty string, ArrayBuffer views default to bin if no Content-Type exists, and other objects delegate to this.json(chunk). It then calculates byte length and sets Content-Length if Transfer-Encoding is absent.",
+    "type": "identifier_lookup",
+    "question": "What status code does res.redirect use when it is called with only a URL?",
+    "reference_answer": "res.redirect defaults to status 302. If called with two arguments, the first is treated as the status and the second as the address.",
     "ground_truth": [
       {
         "file": "lib/response.js",
-        "start_line": 126,
-        "end_line": 185
+        "start_line": 815,
+        "end_line": 824
+      }
+    ]
+  },
+  {
+    "id": "exp-003",
+    "corpus": "express",
+    "type": "identifier_lookup",
+    "question": "What is the default value of the 'subdomain offset' setting, and where is it set?",
+    "reference_answer": "It defaults to 2, set in app.defaultConfiguration in lib/application.js.",
+    "ground_truth": [
+      {
+        "file": "lib/application.js",
+        "start_line": 98,
+        "end_line": 98
+      }
+    ]
+  },
+  {
+    "id": "exp-004",
+    "corpus": "express",
+    "type": "identifier_lookup",
+    "question": "How does app.listen create and start the HTTP server?",
+    "reference_answer": "app.listen creates a server with http.createServer(this), where the app itself is the request handler, and calls server.listen with the given arguments. If the last argument is a function it is wrapped with once and also registered as a one-time error listener.",
+    "ground_truth": [
+      {
+        "file": "lib/application.js",
+        "start_line": 598,
+        "end_line": 606
+      }
+    ]
+  },
+  {
+    "id": "exp-005",
+    "corpus": "express",
+    "type": "identifier_lookup",
+    "question": "What error is thrown when an unknown value is passed to the etag setting?",
+    "reference_answer": "compileETag throws a TypeError with the message 'unknown value for etag function:' followed by the value.",
+    "ground_truth": [
+      {
+        "file": "lib/utils.js",
+        "start_line": 147,
+        "end_line": 148
+      }
+    ]
+  },
+  {
+    "id": "exp-006",
+    "corpus": "express",
+    "type": "conceptual",
+    "question": "How does res.send handle a JavaScript object passed as the body?",
+    "reference_answer": "For booleans, numbers, and objects, res.send checks the value. null becomes an empty string, typed arrays and buffers are sent as binary with a bin content type if none is set, and any other object is passed to res.json.",
+    "ground_truth": [
+      {
+        "file": "lib/response.js",
+        "start_line": 146,
+        "end_line": 158
+      }
+    ]
+  },
+  {
+    "id": "exp-007",
+    "corpus": "express",
+    "type": "conceptual",
+    "question": "How does Express avoid sending a response body for 204 and 304 statuses and for HEAD requests?",
+    "reference_answer": "In res.send, when the status is 204 or 304 it removes Content-Type, Content-Length, and Transfer-Encoding and sets the chunk to an empty string. For HEAD requests it calls this.end() without a body instead of sending the chunk.",
+    "ground_truth": [
+      {
+        "file": "lib/response.js",
+        "start_line": 198,
+        "end_line": 204
+      },
+      {
+        "file": "lib/response.js",
+        "start_line": 213,
+        "end_line": 219
+      }
+    ]
+  },
+  {
+    "id": "exp-008",
+    "corpus": "express",
+    "type": "conceptual",
+    "question": "How does res.cookie treat the maxAge option?",
+    "reference_answer": "If maxAge is not null it is converted to a number. When valid, expires is set to the current time plus maxAge in milliseconds, and maxAge itself is converted to whole seconds for the cookie header.",
+    "ground_truth": [
+      {
+        "file": "lib/response.js",
+        "start_line": 765,
+        "end_line": 772
+      }
+    ]
+  },
+  {
+    "id": "exp-009",
+    "corpus": "express",
+    "type": "conceptual",
+    "question": "When and how is the application's base router created?",
+    "reference_answer": "The router is created lazily. app.init defines a router property with a getter that builds a Router on first access, using the 'case sensitive routing' and 'strict routing' settings, and then reuses it.",
+    "ground_truth": [
+      {
+        "file": "lib/application.js",
+        "start_line": 68,
+        "end_line": 82
+      }
+    ]
+  },
+  {
+    "id": "exp-010",
+    "corpus": "express",
+    "type": "multi_hop",
+    "question": "If app.set('etag', 'strong') is called, how does that setting end up determining the ETag generated by res.send?",
+    "reference_answer": "app.set has a case for 'etag' that stores 'etag fn' using compileETag(val). In lib/utils.js compileETag maps 'strong' to the strong etag generator. Later res.send reads 'etag fn' from the app and, if no ETag header exists, calls it on the body to set the ETag header.",
+    "ground_truth": [
+      {
+        "file": "lib/application.js",
+        "start_line": 364,
+        "end_line": 366
+      },
+      {
+        "file": "lib/utils.js",
+        "start_line": 130,
+        "end_line": 152
+      },
+      {
+        "file": "lib/response.js",
+        "start_line": 162,
+        "end_line": 163
+      },
+      {
+        "file": "lib/response.js",
+        "start_line": 188,
+        "end_line": 193
+      }
+    ]
+  },
+  {
+    "id": "exp-011",
+    "corpus": "express",
+    "type": "multi_hop",
+    "question": "How does the 'trust proxy' setting flow from app.set to the value returned by req.ip?",
+    "reference_answer": "app.set has a case for 'trust proxy' that stores 'trust proxy fn' using compileTrust. In lib/utils.js compileTrust turns booleans, hop counts, strings, arrays, or functions into a trust function. The req.ip getter in lib/request.js reads 'trust proxy fn' from the app and passes it to proxyaddr to determine the client address.",
+    "ground_truth": [
+      {
+        "file": "lib/application.js",
+        "start_line": 370,
+        "end_line": 371
+      },
+      {
+        "file": "lib/utils.js",
+        "start_line": 194,
+        "end_line": 214
+      },
+      {
+        "file": "lib/request.js",
+        "start_line": 340,
+        "end_line": 343
+      }
+    ]
+  },
+  {
+    "id": "exp-012",
+    "corpus": "express",
+    "type": "multi_hop",
+    "question": "When a sub-app is mounted with app.use, how does it inherit from its parent and how are the request and response prototypes restored afterward?",
+    "reference_answer": "app.use sets the sub-app's mountpath and parent, wraps it in a mounted_app middleware, and emits 'mount'. The 'mount' handler registered in defaultConfiguration sets the sub-app's request, response, engines, and settings prototypes to the parent's. In mounted_app, after the sub-app finishes handling, the request and response prototypes are reset to those of the original app before calling next.",
+    "ground_truth": [
+      {
+        "file": "lib/application.js",
+        "start_line": 109,
+        "end_line": 122
+      },
+      {
+        "file": "lib/application.js",
+        "start_line": 225,
+        "end_line": 240
       }
     ]
   }
