@@ -25,7 +25,7 @@ export interface AgentRunResult {
   stepCount: number;
   totalTokens: number;
   totalCostUsd: number;
-  status: 'completed' | 'failed';
+  status: 'completed' | 'pending' | 'failed';
 }
 
 export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunResult> {
@@ -52,6 +52,7 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
   let step = 0;
   let totalTokens = 0;
   let totalCostUsd = 0;
+  let repairOnly = false;
 
   try {
     for (let iteration = 0; iteration < maxSteps; iteration++) {
@@ -59,7 +60,7 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
       const response = await options.llmClient.chat({
         model: activeModel,
         messages,
-        tools: AGENT_TOOLS,
+        tools: repairOnly ? undefined : AGENT_TOOLS,
         temperature: 0
       });
       const turnElapsed = response.activeTimeMs ?? Date.now() - turnStart;
@@ -78,11 +79,26 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
           llm_attempts: response.attempts ?? 1,
           rate_limit_count: response.rateLimitCount ?? 0,
           rate_limit_wait_ms: response.waitTimeMs ?? 0,
-          tool_call_failure_count: response.toolCallFailureCount ?? 0
+          tool_call_failure_count: response.toolCallFailureCount ?? 0,
+          pacing_wait_ms: response.pacingWaitMs ?? 0
         },
         tokens: response.usage.totalTokens,
         elapsed_ms: turnElapsed
       });
+
+      if (response.recoveredAnswer) {
+        const recovered = parseFinalAnswer(JSON.stringify(response.recoveredAnswer));
+        if (recovered.ok) {
+          await logger.logEvent({
+            step,
+            type: 'final_answer_recovered',
+            args: { recovered_answer: true }
+          });
+          const payload = { answer: recovered.data.answer, citations: recovered.data.citations, read_ranges: readRanges };
+          await logger.finishRun({ status: 'completed', final_answer: JSON.stringify(payload), total_tokens: totalTokens, cost_usd: totalCostUsd });
+          return { runId, answer: recovered.data.answer, citations: recovered.data.citations, readRanges, stepCount: step, totalTokens, totalCostUsd, status: 'completed' };
+        }
+      }
 
       if (response.toolCalls && response.toolCalls.length > 0) {
         messages.push({
@@ -92,6 +108,25 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
         });
 
         for (const tc of response.toolCalls) {
+          if (tc.name === 'submit_answer') {
+            const parsed = parseFinalAnswer(JSON.stringify(tc.arguments));
+            await logger.logEvent({
+              step,
+              type: 'tool_call',
+              tool: tc.name,
+              args: tc.arguments,
+              result_summary: parsed.ok ? 'Final answer accepted' : `Final answer rejected: ${parsed.error}`
+            });
+            if (parsed.ok) {
+              const payload = { answer: parsed.data.answer, citations: parsed.data.citations, read_ranges: readRanges };
+              await logger.finishRun({ status: 'completed', final_answer: JSON.stringify(payload), total_tokens: totalTokens, cost_usd: totalCostUsd });
+              return { runId, answer: parsed.data.answer, citations: parsed.data.citations, readRanges, stepCount: step, totalTokens, totalCostUsd, status: 'completed' };
+            }
+            messages.push({ role: 'tool', tool_call_id: tc.id, name: tc.name, content: `Invalid submit_answer: ${parsed.error}` });
+            messages.push({ role: 'user', content: getRepairPrompt() });
+            repairOnly = true;
+            continue;
+          }
           const toolStart = Date.now();
           const toolResult = await executeToolCall(sandbox, tc.name, tc.arguments);
           const toolElapsed = Date.now() - toolStart;
@@ -169,7 +204,8 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
             llm_attempts: repairRes.attempts ?? 1,
             rate_limit_count: repairRes.rateLimitCount ?? 0,
             rate_limit_wait_ms: repairRes.waitTimeMs ?? 0,
-            tool_call_failure_count: repairRes.toolCallFailureCount ?? 0
+          tool_call_failure_count: repairRes.toolCallFailureCount ?? 0,
+          pacing_wait_ms: repairRes.pacingWaitMs ?? 0
           },
           tokens: repairRes.usage.totalTokens,
           elapsed_ms: repairElapsed
@@ -250,7 +286,8 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
         llm_attempts: limitRes.attempts ?? 1,
         rate_limit_count: limitRes.rateLimitCount ?? 0,
         rate_limit_wait_ms: limitRes.waitTimeMs ?? 0,
-        tool_call_failure_count: limitRes.toolCallFailureCount ?? 0
+        tool_call_failure_count: limitRes.toolCallFailureCount ?? 0,
+        pacing_wait_ms: limitRes.pacingWaitMs ?? 0
       },
       tokens: limitRes.usage.totalTokens,
       elapsed_ms: limitElapsed
@@ -300,7 +337,8 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
         llm_attempts: limitRepairRes.attempts ?? 1,
         rate_limit_count: limitRepairRes.rateLimitCount ?? 0,
         rate_limit_wait_ms: limitRepairRes.waitTimeMs ?? 0,
-        tool_call_failure_count: limitRepairRes.toolCallFailureCount ?? 0
+        tool_call_failure_count: limitRepairRes.toolCallFailureCount ?? 0,
+        pacing_wait_ms: limitRepairRes.pacingWaitMs ?? 0
       },
       tokens: limitRepairRes.usage.totalTokens,
       elapsed_ms: limitRepairRes.activeTimeMs ?? 0
@@ -372,6 +410,10 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
         result_summary: err.message,
         elapsed_ms: err.activeTimeMs
       });
+      if (err.lastErrorClass === 'daily_quota_exhausted') {
+        await logger.finishRun({ status: 'pending', total_tokens: totalTokens, cost_usd: totalCostUsd });
+        return { runId, answer: err.message, citations: [], readRanges, stepCount: step, totalTokens, totalCostUsd, status: 'pending' };
+      }
     }
     const errMsg = (err as Error).message;
     await logger.logEvent({

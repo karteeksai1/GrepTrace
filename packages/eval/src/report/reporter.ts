@@ -21,6 +21,8 @@ export interface RunDetailRow {
   active_latency_ms?: number | null;
   rate_limit_count?: number | null;
   rate_limit_wait_ms?: number | null;
+  pacing_wait_ms?: number | null;
+  recovered_answer?: number;
   llm_attempts?: number | null;
   tool_call_failure_count?: number | null;
   embedding_ms?: number | null;
@@ -158,6 +160,8 @@ export async function fetchBatchRunRows(pool: pg.Pool, batchName: string, rootDi
       active_latency_ms: metrics.active_latency_ms,
       rate_limit_count: metrics.rate_limit_count,
       rate_limit_wait_ms: metrics.rate_limit_wait_ms,
+      pacing_wait_ms: metrics.pacing_wait_ms,
+      recovered_answer: metrics.recovered_answer,
       llm_attempts: metrics.llm_attempts,
       tool_call_failure_count: metrics.tool_call_failure_count,
       embedding_ms: metrics.embedding_ms,
@@ -189,6 +193,8 @@ export interface GroupSummary {
   question_type: string;
   total_runs: number;
   failures: number;
+  pending: number;
+  recovered_answers: number;
   hit_any_rate: number;
   hit_all_rate: number;
   mean_recall: number;
@@ -204,6 +210,7 @@ export interface GroupSummary {
   mean_db_time_ms: number;
   mean_active_latency_ms: number | null;
   mean_rate_limit_wait_ms: number | null;
+  mean_pacing_wait_ms: number | null;
   mean_llm_attempts: number | null;
   mean_tool_call_failure_count: number | null;
 }
@@ -229,6 +236,7 @@ export function aggregateRows(rows: RunDetailRow[]): GroupSummary[] {
     const [system, corpus, question_type] = key.split('__');
     const total_runs = group.length;
     const failures = group.filter((r) => r.status === 'failed').length;
+    const pending = group.filter((r) => r.status === 'pending').length;
 
     const hitAnyCount = group.filter((r) => r.retrieval_hit_any).length;
     const hitAllCount = group.filter((r) => r.retrieval_hit_all).length;
@@ -243,6 +251,7 @@ export function aggregateRows(rows: RunDetailRow[]): GroupSummary[] {
     const dbTimes = group.map((r) => r.db_time_ms);
     const activeLatencies = knownValues(group, 'active_latency_ms');
     const rateLimitWaits = knownValues(group, 'rate_limit_wait_ms');
+    const pacingWaits = knownValues(group, 'pacing_wait_ms');
     const llmAttempts = knownValues(group, 'llm_attempts');
     const toolCallFailures = knownValues(group, 'tool_call_failure_count');
 
@@ -252,6 +261,8 @@ export function aggregateRows(rows: RunDetailRow[]): GroupSummary[] {
       question_type,
       total_runs,
       failures,
+      pending,
+      recovered_answers: group.reduce((sum, row) => sum + (row.recovered_answer ?? 0), 0),
       hit_any_rate: Number((hitAnyCount / total_runs).toFixed(4)),
       hit_all_rate: Number((hitAllCount / total_runs).toFixed(4)),
       mean_recall: mean(recalls),
@@ -267,6 +278,7 @@ export function aggregateRows(rows: RunDetailRow[]): GroupSummary[] {
       mean_db_time_ms: Math.round(mean(dbTimes)),
       mean_active_latency_ms: activeLatencies.length > 0 ? Math.round(mean(activeLatencies)) : null,
       mean_rate_limit_wait_ms: rateLimitWaits.length > 0 ? Math.round(mean(rateLimitWaits)) : null,
+      mean_pacing_wait_ms: pacingWaits.length > 0 ? Math.round(mean(pacingWaits)) : null,
       mean_llm_attempts: llmAttempts.length > 0 ? Number(mean(llmAttempts).toFixed(1)) : null,
       mean_tool_call_failure_count: toolCallFailures.length > 0 ? Number(mean(toolCallFailures).toFixed(1)) : null
     });
@@ -277,9 +289,9 @@ export function aggregateRows(rows: RunDetailRow[]): GroupSummary[] {
 
 export function formatAggregateMarkdownTable(summaries: GroupSummary[]): string {
   const headers = [
-    'System', 'Corpus', 'Type', 'N', 'Fail',
+    'System', 'Corpus', 'Type', 'N', 'Fail', 'Pending', 'Recovered',
     'HitAny', 'HitAll', 'Recall', 'CiteCorr', 'Score', 'FailedRuns',
-    'Tokens(M/Med)', 'Cost', 'Latency(Mean/P95)', 'ActiveMs', 'WaitMs', 'Steps', 'LLMAttempts', 'ToolFails', 'DbMs'
+    'Tokens(M/Med)', 'Cost', 'Latency(Mean/P95)', 'ActiveMs', 'RateWaitMs', 'PacingWaitMs', 'Steps', 'LLMAttempts', 'ToolFails', 'DbMs'
   ];
 
   const rows = summaries.map((s) => [
@@ -288,6 +300,8 @@ export function formatAggregateMarkdownTable(summaries: GroupSummary[]): string 
     s.question_type,
     String(s.total_runs),
     String(s.failures),
+    String(s.pending),
+    String(s.recovered_answers),
     `${(s.hit_any_rate * 100).toFixed(0)}%`,
     `${(s.hit_all_rate * 100).toFixed(0)}%`,
     s.mean_recall.toFixed(2),
@@ -299,6 +313,7 @@ export function formatAggregateMarkdownTable(summaries: GroupSummary[]): string 
     `${s.mean_latency_ms}/${s.p95_latency_ms}`,
     s.mean_active_latency_ms === null ? 'n/a' : String(s.mean_active_latency_ms),
     s.mean_rate_limit_wait_ms === null ? 'n/a' : String(s.mean_rate_limit_wait_ms),
+    s.mean_pacing_wait_ms === null ? 'n/a' : String(s.mean_pacing_wait_ms),
     String(s.mean_step_count),
     s.mean_llm_attempts === null ? 'n/a' : String(s.mean_llm_attempts),
     s.mean_tool_call_failure_count === null ? 'n/a' : String(s.mean_tool_call_failure_count),
@@ -419,9 +434,9 @@ export function formatHeadToHeadMarkdown(h2h: HeadToHeadRow[]): string {
   };
   const rows = h2h.map((h) => [
     h.question_id,
-    h.agentic_status === 'failed' ? `FAILED (${h.agentic_failure_reason ?? 'unknown'})` : h.agentic_score.toFixed(1),
+    h.agentic_status === 'failed' ? `FAILED (${h.agentic_failure_reason ?? 'unknown'})` : h.agentic_status === 'pending' ? 'PENDING' : h.agentic_score.toFixed(1),
     h.agentic_status === 'failed' ? '1' : '0',
-    h.rag_status === 'failed' ? `FAILED (${h.rag_failure_reason ?? 'unknown'})` : h.rag_score.toFixed(1),
+    h.rag_status === 'failed' ? `FAILED (${h.rag_failure_reason ?? 'unknown'})` : h.rag_status === 'pending' ? 'PENDING' : h.rag_score.toFixed(1),
     h.rag_status === 'failed' ? '1' : '0',
     h.agentic_hit_all ? 'yes' : 'no',
     h.rag_hit_all ? 'yes' : 'no',
@@ -507,7 +522,7 @@ export async function generateFailuresMarkdown(
 export function exportRunsCsv(rows: RunDetailRow[]): string {
   const headers = [
     'run_id', 'system', 'corpus', 'question_id', 'question_type', 'model', 'status',
-    'repetition', 'total_tokens', 'cost_usd', 'latency_ms', 'active_latency_ms', 'rate_limit_wait_ms', 'rate_limit_count', 'llm_attempts', 'tool_call_failure_count', 'step_count', 'db_time_ms',
+    'repetition', 'total_tokens', 'cost_usd', 'latency_ms', 'active_latency_ms', 'rate_limit_wait_ms', 'pacing_wait_ms', 'rate_limit_count', 'recovered_answer', 'llm_attempts', 'tool_call_failure_count', 'step_count', 'db_time_ms',
     'retrieval_hit_any', 'retrieval_hit_all', 'retrieval_recall', 'citation_correct',
     'answer_score', 'failure_reason', 'last_error_class', 'judge_verdict', 'judge_reason', 'judge_tokens', 'judge_cost_usd'
   ];
@@ -529,7 +544,9 @@ export function exportRunsCsv(rows: RunDetailRow[]): string {
       r.latency_ms,
       r.active_latency_ms,
       r.rate_limit_wait_ms,
+      r.pacing_wait_ms,
       r.rate_limit_count,
+      r.recovered_answer,
       r.llm_attempts,
       r.tool_call_failure_count,
       r.step_count,
@@ -570,7 +587,7 @@ export function generateAsciiSummary(summaries: GroupSummary[], h2h: HeadToHeadR
     'System', 'Corpus', 'Type', 'N', 'Fail',
     'HitAny', 'HitAll', 'Recall', 'CiteCorr', 'Score',
     'Tokens', 'Cost', 'Latency(ms)', 'Steps', 'DbMs'
-    , 'ActiveMs', 'WaitMs', 'LLMAttempts', 'ToolFails'
+    , 'ActiveMs', 'RateWaitMs', 'PacingWaitMs', 'LLMAttempts', 'ToolFails', 'Pending', 'Recovered'
   ];
   const aggRows = summaries.map((s) => [
     s.system,
@@ -590,16 +607,19 @@ export function generateAsciiSummary(summaries: GroupSummary[], h2h: HeadToHeadR
     s.system === 'rag' ? `${s.mean_db_time_ms}` : '-',
     s.mean_active_latency_ms === null ? 'n/a' : String(s.mean_active_latency_ms),
     s.mean_rate_limit_wait_ms === null ? 'n/a' : String(s.mean_rate_limit_wait_ms),
+    s.mean_pacing_wait_ms === null ? 'n/a' : String(s.mean_pacing_wait_ms),
     s.mean_llm_attempts === null ? 'n/a' : String(s.mean_llm_attempts),
-    s.mean_tool_call_failure_count === null ? 'n/a' : String(s.mean_tool_call_failure_count)
+    s.mean_tool_call_failure_count === null ? 'n/a' : String(s.mean_tool_call_failure_count),
+    String(s.pending),
+    String(s.recovered_answers)
   ]);
 
   const h2hHeaders = ['Question', 'Agent Score', 'Agent Failed', 'RAG Score', 'RAG Failed', 'Agent HitAll', 'RAG HitAll', 'Agent Tok', 'RAG Tok', 'Agent Lat/Active', 'RAG Lat/Active', 'Agent Wait', 'RAG Wait', 'Agent Steps/LLM/Fail', 'RAG Steps/LLM/Fail', 'Winner'];
   const h2hRows = h2h.map((h) => [
     h.question_id,
-    h.agentic_status === 'failed' ? 'FAILED' : h.agentic_score.toFixed(1),
+    h.agentic_status === 'failed' ? 'FAILED' : h.agentic_status === 'pending' ? 'PENDING' : h.agentic_score.toFixed(1),
     h.agentic_status === 'failed' ? '1' : '0',
-    h.rag_status === 'failed' ? 'FAILED' : h.rag_score.toFixed(1),
+    h.rag_status === 'failed' ? 'FAILED' : h.rag_status === 'pending' ? 'PENDING' : h.rag_score.toFixed(1),
     h.rag_status === 'failed' ? '1' : '0',
     h.agentic_hit_all ? 'yes' : 'no',
     h.rag_hit_all ? 'yes' : 'no',

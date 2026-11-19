@@ -116,4 +116,32 @@ describe('LLM attempt measurement', () => {
     expect(waitForSlot).toHaveBeenCalledTimes(2);
     fetchMock.mockRestore();
   });
+
+  it('recovers a final answer from failed_generation without retrying', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+      error: {
+        code: 'tool_use_failed',
+        failed_generation: 'json({"answer":"Recovered","citations":[]})'
+      }
+    }), { status: 400 }));
+    const client = new OpenAIClient({ baseUrl: 'https://groq.test', maxRetries: 3 });
+
+    const response = await client.chat({ messages: [{ role: 'user', content: 'hello' }], tools: [{ name: 'grep', description: 'search', parameters: { type: 'object', properties: {} } }] });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(response.recoveredAnswer).toEqual({ answer: 'Recovered', citations: [] });
+    fetchMock.mockRestore();
+  });
+
+  it('does not retry a daily token quota error', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('tokens per day (TPD) limit reached', { status: 429 }));
+    const client = new OpenAIClient({ baseUrl: 'https://groq.test', maxRetries: 3 });
+
+    const error = await client.chat({ messages: [{ role: 'user', content: 'hello' }] }).catch((value) => value as LLMRequestError);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(error.lastErrorClass).toBe('daily_quota_exhausted');
+    expect(error.failureReason).toBe('daily_quota_exhausted');
+    fetchMock.mockRestore();
+  });
 });

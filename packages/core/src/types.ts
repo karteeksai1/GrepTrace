@@ -2,7 +2,7 @@ export type SystemType = 'agentic' | 'rag';
 
 export type QuestionType = 'identifier_lookup' | 'conceptual' | 'multi_hop';
 
-export type RunStatus = 'running' | 'completed' | 'failed';
+export type RunStatus = 'running' | 'pending' | 'completed' | 'failed';
 
 export interface GroundTruthLocation {
   file: string;

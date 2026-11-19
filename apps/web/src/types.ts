@@ -18,6 +18,7 @@ export interface BatchItem {
     total: number;
     completed: number;
     failed: number;
+    pending: number;
   };
 }
 
@@ -27,6 +28,8 @@ export interface GroupSummary {
   question_type: string;
   total_runs: number;
   failures: number;
+  pending: number;
+  recovered_answers: number;
   hit_any_rate: number;
   hit_all_rate: number;
   mean_recall: number;
@@ -42,6 +45,7 @@ export interface GroupSummary {
   mean_db_time_ms: number;
   mean_active_latency_ms: number | null;
   mean_rate_limit_wait_ms: number | null;
+  mean_pacing_wait_ms: number | null;
   mean_llm_attempts: number | null;
   mean_tool_call_failure_count: number | null;
 }

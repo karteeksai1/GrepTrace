@@ -11,6 +11,29 @@ export * from './read.js';
 
 export const AGENT_TOOLS: ToolDefinition[] = [
   {
+    name: 'submit_answer',
+    description: 'Submit the final answer after inspecting the corpus.',
+    parameters: {
+      type: 'object',
+      properties: {
+        answer: { type: 'string', description: 'The answer supported by the inspected files.' },
+        citations: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              file: { type: 'string' },
+              start_line: { type: 'number' },
+              end_line: { type: 'number' }
+            },
+            required: ['file', 'start_line', 'end_line']
+          }
+        }
+      },
+      required: ['answer', 'citations']
+    }
+  },
+  {
     name: 'grep',
     description: 'Search for regular expression patterns across files in the corpus using ripgrep. Returns matching files, line numbers, and line contents.',
     parameters: {

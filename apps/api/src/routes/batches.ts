@@ -24,6 +24,7 @@ export function createBatchesRouter(pool: pg.Pool, rootDir: string): Router {
           COUNT(r.id)::int as total_runs,
           COUNT(CASE WHEN r.status = 'completed' THEN 1 END)::int as completed_runs,
           COUNT(CASE WHEN r.status = 'failed' THEN 1 END)::int as failed_runs
+          , COUNT(CASE WHEN r.status = 'pending' THEN 1 END)::int as pending_runs
         FROM batches b
         LEFT JOIN runs r ON b.id = r.batch_id
         GROUP BY b.id
@@ -45,6 +46,7 @@ export function createBatchesRouter(pool: pg.Pool, rootDir: string): Router {
             total: row.total_runs,
             completed: row.completed_runs,
             failed: row.failed_runs
+            , pending: row.pending_runs
           }
         }))
       });

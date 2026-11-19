@@ -13,6 +13,7 @@ const envSchema = z.object({
   EVAL_CONCURRENCY: z.coerce.number().int().positive().default(1),
   EVAL_REPETITIONS: z.coerce.number().int().positive().default(1),
   EVAL_MIN_REQUEST_INTERVAL_MS: z.coerce.number().int().min(0).default(1500),
+  LLM_TPM_LIMIT: z.coerce.number().int().min(0).default(8000),
   EMBEDDING_PROVIDER: z.literal('pinecone', {
     errorMap: () => ({ message: 'EMBEDDING_PROVIDER must be "pinecone"' })
   }),

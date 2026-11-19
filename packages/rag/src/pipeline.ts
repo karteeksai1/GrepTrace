@@ -39,7 +39,7 @@ export interface RagRunResult {
   stepCount: number;
   totalTokens: number;
   totalCostUsd: number;
-  status: 'completed' | 'failed';
+  status: 'completed' | 'pending' | 'failed';
 }
 
 export async function runRagPipeline(options: RagRunOptions): Promise<RagRunResult> {
@@ -124,11 +124,26 @@ export async function runRagPipeline(options: RagRunOptions): Promise<RagRunResu
         llm_attempts: response.attempts ?? 1,
         rate_limit_count: response.rateLimitCount ?? 0,
         rate_limit_wait_ms: response.waitTimeMs ?? 0,
-        tool_call_failure_count: response.toolCallFailureCount ?? 0
+        tool_call_failure_count: response.toolCallFailureCount ?? 0,
+        pacing_wait_ms: response.pacingWaitMs ?? 0
       },
       tokens: response.usage.totalTokens,
       elapsed_ms: modelElapsed
     });
+
+    const recoveredParsed = response.recoveredAnswer
+      ? parseFinalAnswer(JSON.stringify(response.recoveredAnswer))
+      : { ok: false as const, error: '' };
+    if (recoveredParsed.ok) {
+      await logger.logEvent({ step, type: 'final_answer_recovered', args: { recovered_answer: true } });
+      const payload = {
+        answer: recoveredParsed.data.answer,
+        citations: recoveredParsed.data.citations,
+        retrieved_chunks: retrieval.chunks.map((c) => ({ file: c.file, start_line: c.start_line, end_line: c.end_line }))
+      };
+      await logger.finishRun({ status: 'completed', final_answer: JSON.stringify(payload), total_tokens: totalTokens, cost_usd: totalCostUsd });
+      return { runId, answer: recoveredParsed.data.answer, citations: recoveredParsed.data.citations, retrievedChunks: retrieval.chunks, dbTimeMs: retrieval.dbTimeMs, totalRetrievalMs: retrieval.totalRetrievalMs, stepCount: step, totalTokens, totalCostUsd, status: 'completed' };
+    }
 
     const parsed = parseFinalAnswer(response.text);
     if (parsed.ok) {
@@ -148,7 +163,6 @@ export async function runRagPipeline(options: RagRunOptions): Promise<RagRunResu
         total_tokens: totalTokens,
         cost_usd: totalCostUsd
       });
-
       return {
         runId,
         answer: parsed.data.answer,
@@ -188,7 +202,8 @@ export async function runRagPipeline(options: RagRunOptions): Promise<RagRunResu
         llm_attempts: repairRes.attempts ?? 1,
         rate_limit_count: repairRes.rateLimitCount ?? 0,
         rate_limit_wait_ms: repairRes.waitTimeMs ?? 0,
-        tool_call_failure_count: repairRes.toolCallFailureCount ?? 0
+        tool_call_failure_count: repairRes.toolCallFailureCount ?? 0,
+        pacing_wait_ms: repairRes.pacingWaitMs ?? 0
       },
       tokens: repairRes.usage.totalTokens,
       elapsed_ms: repairElapsed
@@ -270,6 +285,10 @@ export async function runRagPipeline(options: RagRunOptions): Promise<RagRunResu
         result_summary: err.message,
         elapsed_ms: err.activeTimeMs
       });
+      if (err.lastErrorClass === 'daily_quota_exhausted') {
+        await logger.finishRun({ status: 'pending', total_tokens: totalTokens, cost_usd: totalCostUsd });
+        return { runId, answer: err.message, citations: [], retrievedChunks: [], dbTimeMs: 0, totalRetrievalMs: 0, stepCount: step, totalTokens, totalCostUsd, status: 'pending' };
+      }
     }
     const errMsg = (err as Error).message;
     await logger.logEvent({

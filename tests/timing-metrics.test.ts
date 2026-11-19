@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deriveRunTimingMetrics } from '../packages/eval/src/report/metrics.js';
+import { Pacer } from '../packages/eval/src/runner/batch-runner.js';
 
 describe('timing metrics', () => {
   it('separates waits and makes the RAG breakdown sum to total latency', () => {
@@ -42,5 +43,30 @@ describe('timing metrics', () => {
     expect(metrics.rate_limit_wait_ms).toBeNull();
     expect(metrics.llm_attempts).toBeNull();
     expect(metrics.tool_call_failure_count).toBeNull();
+  });
+
+  it('tracks pacing separately from rate-limit waits', () => {
+    const metrics = deriveRunTimingMetrics([
+      { type: 'model_turn', elapsed_ms: 500, args: { llm_attempts: 1, rate_limit_wait_ms: 0, pacing_wait_ms: 200 } }
+    ]);
+
+    expect(metrics.pacing_wait_ms).toBe(200);
+    expect(metrics.rate_limit_wait_ms).toBe(0);
+  });
+
+  it('waits for TPM usage and disables TPM pacing at zero', async () => {
+    let now = 0;
+    const waits: number[] = [];
+    const pacer = new Pacer(0, 100, () => now, async (ms) => { waits.push(ms); now += ms; });
+    await pacer.waitForSlot(80);
+    await pacer.waitForSlot(30);
+    expect(waits).toEqual([60000]);
+
+    now = 0;
+    waits.length = 0;
+    const disabled = new Pacer(0, 0, () => now, async (ms) => { waits.push(ms); now += ms; });
+    await disabled.waitForSlot(100000);
+    await disabled.waitForSlot(100000);
+    expect(waits).toEqual([]);
   });
 });

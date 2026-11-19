@@ -11,6 +11,8 @@ export interface RunTimingMetrics {
   active_latency_ms: number | null;
   rate_limit_count: number | null;
   rate_limit_wait_ms: number | null;
+  pacing_wait_ms: number | null;
+  recovered_answer: number;
   llm_attempts: number | null;
   tool_call_failure_count: number | null;
   step_count: number | null;
@@ -71,8 +73,11 @@ export function deriveRunTimingMetrics(
   const rateLimitWaitMs = hasAttemptMetadata
     ? (sum(failedAttempts.map((event) => numeric(event.args?.wait_ms) ?? 0)) ?? 0)
     : null;
+  const pacingWaitMs = hasAttemptMetadata
+    ? (sum(modelTurns.map((event) => numeric(event.args?.pacing_wait_ms) ?? 0)) ?? 0)
+    : null;
   const rateLimitCount = hasAttemptMetadata
-    ? failedAttempts.filter((event) => event.args?.reason === 'rate_limited').length
+    ? failedAttempts.filter((event) => event.args?.reason === 'rate_limited' || event.args?.reason === 'daily_quota_exhausted').length
     : null;
   const toolCallFailureCount = hasAttemptMetadata
     ? failedAttempts.filter((event) => event.args?.reason === 'tool_call_failed').length
@@ -82,7 +87,7 @@ export function deriveRunTimingMetrics(
       failedCalls.reduce((total, event) => total + (numeric(event.args?.llm_attempts) ?? 0), 0)
     : null;
   const activeLatencyMs = latencyMs !== null && rateLimitWaitMs !== null
-    ? Math.max(0, latencyMs - rateLimitWaitMs)
+    ? Math.max(0, latencyMs - rateLimitWaitMs - (pacingWaitMs ?? 0))
     : null;
   const stepCount = events.length === 0 ? null : modelTurns.length;
   const retrieval = events.find((event) => event.type === 'retrieval');
@@ -107,6 +112,8 @@ export function deriveRunTimingMetrics(
     active_latency_ms: activeLatencyMs,
     rate_limit_count: rateLimitCount,
     rate_limit_wait_ms: rateLimitWaitMs,
+    pacing_wait_ms: pacingWaitMs,
+    recovered_answer: events.filter((event) => event.type === 'final_answer_recovered').length,
     llm_attempts: llmAttempts,
     tool_call_failure_count: toolCallFailureCount,
     step_count: stepCount,

@@ -118,6 +118,7 @@ export class OpenAIClient implements LLMClient {
   }
 
   private classifyFailure(status: number, errorText: string): LLMAttemptReason {
+    if (status === 429 && /tokens?\s+per\s+day|\bTPD\b/i.test(errorText)) return 'daily_quota_exhausted';
     if (status === 429) return 'rate_limited';
     if (status === 400 && /tool_use_failed|failed_generation/i.test(errorText)) {
       return 'tool_call_failed';
@@ -144,6 +145,32 @@ export class OpenAIClient implements LLMClient {
     return value.replace(/\s+/g, ' ').trim().slice(0, 500);
   }
 
+  private extractRecoveredAnswer(errorText: string): Record<string, unknown> | undefined {
+    let generation: string | undefined;
+    try {
+      const body = JSON.parse(errorText) as { error?: { failed_generation?: unknown }; failed_generation?: unknown };
+      const value = body.error?.failed_generation ?? body.failed_generation;
+      if (typeof value === 'string') generation = value;
+    } catch {
+      const match = errorText.match(/failed_generation\s*[:=]\s*["']([\s\S]*?)["']\s*[,}]/i);
+      generation = match?.[1];
+    }
+    if (!generation) return undefined;
+    generation = generation.replace(/\\n/g, '\n').replace(/\\"/g, '"').trim();
+    const call = generation.match(/^(?:call\s+)?([A-Za-z_][\w-]*)\s*(?:\(([^]*)\)|\s+([\s\S]*))$/i);
+    if (!call || ['grep', 'glob', 'read'].includes(call[1].toLowerCase())) return undefined;
+    const argumentText = call[2] ?? call[3] ?? '';
+    try {
+      const args = JSON.parse(argumentText.trim());
+      if (args && typeof args === 'object' && typeof args.answer === 'string' && Array.isArray(args.citations)) {
+        return args as Record<string, unknown>;
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  }
+
   private createError(
     status: number,
     reason: LLMAttemptReason,
@@ -153,7 +180,8 @@ export class OpenAIClient implements LLMClient {
     waitTimeMs: number,
     rateLimitCount: number,
     toolCallFailureCount: number,
-    failedAttempts: LLMAttemptFailure[]
+    failedAttempts: LLMAttemptFailure[],
+    failureReason?: string
   ): LLMRequestError {
     const errorBody = this.truncateErrorBody(message);
     return new LLMRequestError(
@@ -166,7 +194,7 @@ export class OpenAIClient implements LLMClient {
         toolCallFailureCount,
         failedAttempts,
         lastErrorClass: reason,
-        failureReason: errorBody || `llm_${reason}`,
+        failureReason: failureReason ?? (errorBody || `llm_${reason}`),
         errorBody
       }
     );
@@ -195,6 +223,7 @@ export class OpenAIClient implements LLMClient {
     let attempt = 0;
     let activeTimeMs = 0;
     let waitTimeMs = 0;
+    let pacingWaitTimeMs = 0;
     let rateLimitCount = 0;
     let toolCallFailureCount = 0;
     const failedAttempts: LLMAttemptFailure[] = [];
@@ -203,7 +232,9 @@ export class OpenAIClient implements LLMClient {
 
     while (true) {
       attempt++;
-      await this.requestPacer?.waitForSlot();
+      const estimatedTokens = Math.ceil(JSON.stringify(body).length / 4) + (request.maxTokens ?? 2048);
+      const pacingWaitMs = await this.requestPacer?.waitForSlot(estimatedTokens) ?? 0;
+      pacingWaitTimeMs += pacingWaitMs;
       const activeStart = Date.now();
       let response: Response;
       let networkError: Error | null = null;
@@ -226,7 +257,27 @@ export class OpenAIClient implements LLMClient {
       if (!response.ok) {
         const errorText = networkError ? networkError.message : await response.text();
         const reason = networkError ? 'transient_server' : this.classifyFailure(response.status, errorText);
-        const retryAllowed = reason === 'rate_limited'
+        const recoveredAnswer = reason === 'tool_call_failed' ? this.extractRecoveredAnswer(errorText) : undefined;
+        if (recoveredAnswer) {
+          const errorBody = this.truncateErrorBody(errorText);
+          failedAttempts.push({ attempt, reason, status: response.status, message: errorBody, errorBody, waitMs: 0, activeTimeMs: attemptActiveTimeMs });
+          return {
+            text: '',
+            usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+            costUsd: 0,
+            attempts: attempt,
+            activeTimeMs,
+            waitTimeMs,
+            rateLimitCount,
+            toolCallFailureCount: toolCallFailureCount + 1,
+            failedAttempts,
+            pacingWaitMs: pacingWaitTimeMs,
+            recoveredAnswer
+          };
+        }
+        const retryAllowed = reason === 'daily_quota_exhausted'
+          ? false
+          : reason === 'rate_limited'
           ? waitTimeMs < this.rateLimitMaxWaitMs
           : reason === 'tool_call_failed'
             ? toolFailureRetries < this.maxRetries
@@ -237,7 +288,7 @@ export class OpenAIClient implements LLMClient {
         if (reason === 'rate_limited') {
           waitMs = Math.min(waitMs, Math.max(0, this.rateLimitMaxWaitMs - waitTimeMs));
         }
-        if (reason === 'rate_limited') rateLimitCount++;
+        if (reason === 'rate_limited' || reason === 'daily_quota_exhausted') rateLimitCount++;
         if (reason === 'tool_call_failed') toolCallFailureCount++;
         if (reason === 'tool_call_failed') toolFailureRetries++;
         if (reason === 'transient_server') transientRetries++;
@@ -259,7 +310,7 @@ export class OpenAIClient implements LLMClient {
         const failureReason = reason === 'rate_limited' && waitTimeMs >= this.rateLimitMaxWaitMs
           ? 'rate_limit_wait_cap_exceeded'
           : reason;
-        throw this.createError(response.status, reason, `${failureReason}: ${errorBody}`, attempt, activeTimeMs, waitTimeMs, rateLimitCount, toolCallFailureCount, failedAttempts);
+        throw this.createError(response.status, reason, `${failureReason}: ${errorBody}`, attempt, activeTimeMs, waitTimeMs, rateLimitCount, toolCallFailureCount, failedAttempts, failureReason);
       }
 
       const data = await response.json();
@@ -284,7 +335,8 @@ export class OpenAIClient implements LLMClient {
         waitTimeMs,
         rateLimitCount,
         toolCallFailureCount,
-        failedAttempts
+        failedAttempts,
+        pacingWaitMs: pacingWaitTimeMs
       };
     }
 

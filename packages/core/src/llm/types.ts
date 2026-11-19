@@ -33,7 +33,7 @@ export interface LLMRequest {
 }
 
 export interface LLMRequestPacer {
-  waitForSlot(): Promise<void>;
+  waitForSlot(estimatedTokens?: number): Promise<number>;
 }
 
 export interface TokenUsage {
@@ -53,10 +53,13 @@ export interface LLMResponse {
   rateLimitCount?: number;
   toolCallFailureCount?: number;
   failedAttempts?: LLMAttemptFailure[];
+  pacingWaitMs?: number;
+  recoveredAnswer?: Record<string, unknown>;
 }
 
 export type LLMAttemptReason =
   | 'rate_limited'
+  | 'daily_quota_exhausted'
   | 'tool_call_failed'
   | 'transient_server'
   | 'other_error';
@@ -81,6 +84,7 @@ export class LLMRequestError extends Error {
   readonly lastErrorClass: LLMAttemptReason;
   readonly failureReason: string;
   readonly errorBody: string;
+  readonly recoveredAnswer?: Record<string, unknown>;
 
   constructor(message: string, details: {
     attempts: number;
@@ -92,6 +96,7 @@ export class LLMRequestError extends Error {
     lastErrorClass: LLMAttemptReason;
     failureReason: string;
     errorBody: string;
+    recoveredAnswer?: Record<string, unknown>;
   }) {
     super(message);
     this.name = 'LLMRequestError';
@@ -104,6 +109,7 @@ export class LLMRequestError extends Error {
     this.lastErrorClass = details.lastErrorClass;
     this.failureReason = details.failureReason;
     this.errorBody = details.errorBody;
+    this.recoveredAnswer = details.recoveredAnswer;
   }
 }
 

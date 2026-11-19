@@ -125,6 +125,51 @@ describe('Agent Loop', () => {
     expect(callCount).toBe(2);
   });
 
+  it('finishes immediately when submit_answer is called', async () => {
+    const { logger } = createMockLogger();
+    const fakeLLM = new MockLLMClient();
+    fakeLLM.setHandler(async () => ({
+      text: '',
+      toolCalls: [{ id: 'answer-1', name: 'submit_answer', arguments: { answer: 'Submitted answer.', citations: [] } }],
+      usage: { promptTokens: 20, completionTokens: 10, totalTokens: 30 },
+      costUsd: 0.00001
+    }));
+
+    const result = await runAgentLoop({ question: 'Submit test', corpus: 'express', corpusRoot, llmClient: fakeLLM, logger });
+
+    expect(result.status).toBe('completed');
+    expect(result.answer).toBe('Submitted answer.');
+  });
+
+  it('repairs an invalid submit_answer call', async () => {
+    const { logger } = createMockLogger();
+    const fakeLLM = new MockLLMClient();
+    let callCount = 0;
+    fakeLLM.setHandler(async (request) => {
+      callCount++;
+      if (callCount === 1) {
+        return {
+          text: '',
+          toolCalls: [{ id: 'answer-1', name: 'submit_answer', arguments: { answer: '', citations: [] } }],
+          usage: { promptTokens: 20, completionTokens: 10, totalTokens: 30 },
+          costUsd: 0.00001
+        };
+      }
+      expect(request.tools).toBeUndefined();
+      return {
+        text: JSON.stringify({ answer: 'Repaired submitted answer.', citations: [] }),
+        usage: { promptTokens: 20, completionTokens: 10, totalTokens: 30 },
+        costUsd: 0.00001
+      };
+    });
+
+    const result = await runAgentLoop({ question: 'Submit repair test', corpus: 'express', corpusRoot, llmClient: fakeLLM, logger });
+
+    expect(result.status).toBe('completed');
+    expect(result.answer).toBe('Repaired submitted answer.');
+    expect(callCount).toBe(2);
+  });
+
   it('reaches max_steps limit and forces final answer', async () => {
     const { logger } = createMockLogger();
     const fakeLLM = new MockLLMClient();

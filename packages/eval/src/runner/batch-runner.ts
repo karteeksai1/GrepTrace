@@ -155,22 +155,41 @@ export async function getCompletedRunKeys(pool: pg.Pool, batchId: string): Promi
 export class Pacer {
   private lastRequestTime = 0;
   private intervalMs: number;
+  private tpmLimit: number;
+  private usage: Array<{ at: number; tokens: number }> = [];
+  private clock: () => number;
+  private sleeper: (ms: number) => Promise<void>;
 
-  constructor(intervalMs: number) {
+  constructor(intervalMs: number, tpmLimit = 8000, clock: () => number = () => Date.now(), sleeper: (ms: number) => Promise<void> = (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms))) {
     this.intervalMs = intervalMs;
+    this.tpmLimit = tpmLimit;
+    this.clock = clock;
+    this.sleeper = sleeper;
   }
 
-  async waitForSlot(): Promise<void> {
-    if (this.intervalMs <= 0) {
-      return;
+  async waitForSlot(estimatedTokens = 0): Promise<number> {
+    let waited = 0;
+    const waitFor = async (ms: number): Promise<void> => {
+      if (ms <= 0) return;
+      waited += ms;
+      await this.sleeper(ms);
+    };
+    const now = this.clock();
+    const intervalWait = this.intervalMs > 0 ? Math.max(0, this.intervalMs - (now - this.lastRequestTime)) : 0;
+    await waitFor(intervalWait);
+    let current = this.clock();
+    this.usage = this.usage.filter((entry) => current - entry.at < 60000);
+    if (this.tpmLimit > 0 && estimatedTokens > 0) {
+      const used = this.usage.reduce((sum, entry) => sum + entry.tokens, 0);
+      if (used + estimatedTokens > this.tpmLimit && this.usage.length > 0) {
+        await waitFor(Math.max(0, this.usage[0].at + 60000 - current));
+        current = this.clock();
+        this.usage = this.usage.filter((entry) => current - entry.at < 60000);
+      }
+      this.usage.push({ at: current, tokens: estimatedTokens });
     }
-    const now = Date.now();
-    const elapsed = now - this.lastRequestTime;
-    if (elapsed < this.intervalMs) {
-      const wait = this.intervalMs - elapsed;
-      await new Promise((resolve) => setTimeout(resolve, wait));
-    }
-    this.lastRequestTime = Date.now();
+    this.lastRequestTime = current;
+    return waited;
   }
 }
 
@@ -184,7 +203,7 @@ export async function executeSingleBenchmarkItem(
   topK: number,
   maxSteps: number,
   pacer: Pacer
-): Promise<{ run: Run; score: ScoreRecord }> {
+): Promise<{ run: Run; score: ScoreRecord | null }> {
   const logger = new TraceLogger(pool);
   const corpusSpec = corporaConfig.corpora[item.corpus];
   const corpusRoot = path.resolve(rootDir, corpusSpec.path);
@@ -193,7 +212,7 @@ export async function executeSingleBenchmarkItem(
   const judgeClient = createLLMClient(undefined, env.JUDGE_MODEL, pacer);
 
   let finalAnswer: string | null = null;
-  let status: 'completed' | 'failed' = 'failed';
+  let status: 'completed' | 'pending' | 'failed' = 'failed';
   let totalTokens = 0;
   let costUsd = 0;
 
@@ -268,6 +287,10 @@ export async function executeSingleBenchmarkItem(
     batch_id: batchId,
     repetition: item.repetition
   };
+
+  if (status === 'pending') {
+    return { run, score: null };
+  }
 
   const score = await scoreRun(
     pool,
@@ -373,7 +396,7 @@ export async function runBenchmark(
     `Total planned: ${matrix.length}, Already completed: ${completedKeys.size}, Pending: ${pendingItems.length}\n\n`
   );
 
-  const pacer = new Pacer(env.EVAL_MIN_REQUEST_INTERVAL_MS);
+  const pacer = new Pacer(env.EVAL_MIN_REQUEST_INTERVAL_MS, env.LLM_TPM_LIMIT);
   const progress: ProgressState = {
     total: matrix.length,
     completed: completedKeys.size,
@@ -385,7 +408,8 @@ export async function runBenchmark(
 
   const concurrency = env.EVAL_CONCURRENCY;
 
-  for (let i = 0; i < pendingItems.length; i += concurrency) {
+  let dailyQuotaExhausted = false;
+  for (let i = 0; i < pendingItems.length && !dailyQuotaExhausted; i += concurrency) {
     const slice = pendingItems.slice(i, i + concurrency);
     const promises = slice.map(async (item) => {
       try {
@@ -402,17 +426,19 @@ export async function runBenchmark(
         );
         if (run.status === 'completed') {
           progress.completed++;
+        } else if (run.status === 'pending') {
+          dailyQuotaExhausted = true;
         } else {
           progress.failed++;
         }
-        progress.runningCost += run.cost_usd + (score.judge_cost_usd ?? 0);
+        progress.runningCost += run.cost_usd + (score?.judge_cost_usd ?? 0);
         const elapsed = (Date.now() - progress.startTime) / 1000;
         const perRunSec = elapsed / Math.max(1, progress.completed + progress.failed);
         const remainingRuns = progress.total - (progress.completed + progress.failed);
         const etaSec = Math.max(0, Math.ceil(remainingRuns * perRunSec));
 
         process.stdout.write(
-          `[Progress] Done: ${progress.completed}/${progress.total} | Failed: ${progress.failed} | Running Cost: $${progress.runningCost.toFixed(5)} | ETA: ${etaSec}s | Last: [${item.system}] ${item.question.id} (Score: ${score.answer_score})\n`
+          `[Progress] Done: ${progress.completed}/${progress.total} | Failed: ${progress.failed} | Pending: ${dailyQuotaExhausted ? 1 : 0} | Running Cost: $${progress.runningCost.toFixed(5)} | ETA: ${etaSec}s | Last: [${item.system}] ${item.question.id}${score ? ` (Score: ${score.answer_score})` : ' (pending)'}\n`
         );
       } catch (err) {
         progress.failed++;
@@ -423,6 +449,9 @@ export async function runBenchmark(
     await Promise.all(promises);
   }
 
+  if (dailyQuotaExhausted) {
+    process.stdout.write(`\nDaily token limit was reached. The current run is pending; rerun batch '${batchName}' later or after upgrading.\n`);
+  }
   process.stdout.write(`\n=== Batch '${batchName}' Finished ===\n`);
   process.stdout.write(`Completed: ${progress.completed}, Failed: ${progress.failed}, Total Cost: $${progress.runningCost.toFixed(5)}\n`);
 }

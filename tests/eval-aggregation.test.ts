@@ -5,6 +5,7 @@ import {
   computeJudgeAgreement,
   escapeCsv,
   formatAsciiTable,
+  formatAggregateMarkdownTable,
   formatHeadToHeadMarkdown,
   mean,
   median,
@@ -175,6 +176,22 @@ describe('Eval Reporter Aggregations', () => {
     const report = formatHeadToHeadMarkdown(buildHeadToHead(rows));
     expect(report).toContain('FAILED (rate_limit_wait_cap_exceeded)');
     expect(report).toContain('Agent Failed');
+  });
+
+  it('reports pending, recovered, pacing, and rate-limit measurements', () => {
+    const rows = [{
+      run_id: 'pending', system: 'agentic', corpus: 'express', question_id: 'q', question_type: 'conceptual', model: 'm', status: 'pending',
+      total_tokens: 1, cost_usd: 0, repetition: 1, latency_ms: 1, step_count: 1, db_time_ms: 0,
+      active_latency_ms: 1, rate_limit_wait_ms: 20, pacing_wait_ms: 30, recovered_answer: 1,
+      retrieval_hit_any: false, retrieval_hit_all: false, retrieval_recall: 0, citation_correct: false, answer_score: 0,
+      judge_verdict: 'none', judge_reason: '', judge_tokens: 0, judge_cost_usd: 0, final_answer: ''
+    }] as RunDetailRow[];
+    const summary = aggregateRows(rows)[0];
+    const markdown = formatAggregateMarkdownTable([summary]);
+    expect(summary.pending).toBe(1);
+    expect(summary.recovered_answers).toBe(1);
+    expect(summary.mean_pacing_wait_ms).toBe(30);
+    expect(markdown).toContain('PacingWaitMs');
   });
 
   it('computes human-judge agreement rate and confusion matrix', () => {

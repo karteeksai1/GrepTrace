@@ -9,17 +9,9 @@ Rules you MUST follow:
 4. Cite file and line ranges: every claim must be backed by citations formatted as file:start_line-end_line.
 5. If the evidence was not found after searching, state explicitly that it was not found.
 6. When invoking tools, execute the tool calls directly without conversational preamble.
-7. When you are done exploring and ready to provide your final answer, do NOT call any more tools. Return ONLY a single JSON object in this exact shape:
-{
-  "answer": "Comprehensive answer text citing file:start_line-end_line for each claim...",
-  "citations": [
-    {
-      "file": "path/to/file.ext",
-      "start_line": 10,
-      "end_line": 25
-    }
-  ]
-}`;
+7. When you are done exploring and ready to provide your final answer, call submit_answer with the exact answer and citations schema. Do not call grep, glob, or read after submitting.
+8. If submit_answer is unavailable, return ONLY a single JSON object in the same schema.
+`;
 }
 
 export function getLimitReachedPrompt(): string {
