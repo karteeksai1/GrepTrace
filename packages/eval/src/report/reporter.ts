@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import pg from 'pg';
 import { extractSystemRanges, parseRunFinalAnswer } from '../scoring/scorer.js';
+import { deriveRunTimingMetrics } from './metrics.js';
 
 export interface RunDetailRow {
   run_id: string;
@@ -17,6 +18,16 @@ export interface RunDetailRow {
   latency_ms: number;
   step_count: number;
   db_time_ms: number;
+  active_latency_ms?: number | null;
+  rate_limit_count?: number | null;
+  rate_limit_wait_ms?: number | null;
+  llm_attempts?: number | null;
+  tool_call_failure_count?: number | null;
+  embedding_ms?: number | null;
+  pinecone_query_ms?: number | null;
+  neon_fetch_ms?: number | null;
+  answer_generation_ms?: number | null;
+  other_latency_ms?: number | null;
   retrieval_hit_any: boolean;
   retrieval_hit_all: boolean;
   retrieval_recall: number;
@@ -117,12 +128,12 @@ export async function fetchBatchRunRows(pool: pg.Pool, batchName: string, rootDi
 
   for (const r of result.rows) {
     const eventsRes = await pool.query(
-      'SELECT step, elapsed_ms, db_time_ms, type FROM events WHERE run_id = $1 ORDER BY step ASC',
+      'SELECT step, elapsed_ms, db_time_ms, type, args FROM events WHERE run_id = $1 ORDER BY step ASC, created_at ASC',
       [r.run_id]
     );
-
-    const stepCount = eventsRes.rows.length;
-    const latencyMs = eventsRes.rows.reduce((sum, e) => sum + (e.elapsed_ms || 0), 0);
+    const metrics = deriveRunTimingMetrics(eventsRes.rows, r.started_at, r.finished_at);
+    const latencyMs = metrics.latency_ms ?? eventsRes.rows.reduce((sum, e) => sum + (e.elapsed_ms || 0), 0);
+    const stepCount = metrics.step_count ?? 0;
     const retrievalEvent = eventsRes.rows.find((e) => e.type === 'retrieval');
     const dbTimeMs = retrievalEvent?.db_time_ms || 0;
 
@@ -142,6 +153,16 @@ export async function fetchBatchRunRows(pool: pg.Pool, batchName: string, rootDi
       latency_ms: latencyMs,
       step_count: stepCount,
       db_time_ms: dbTimeMs,
+      active_latency_ms: metrics.active_latency_ms,
+      rate_limit_count: metrics.rate_limit_count,
+      rate_limit_wait_ms: metrics.rate_limit_wait_ms,
+      llm_attempts: metrics.llm_attempts,
+      tool_call_failure_count: metrics.tool_call_failure_count,
+      embedding_ms: metrics.embedding_ms,
+      pinecone_query_ms: metrics.pinecone_query_ms,
+      neon_fetch_ms: metrics.neon_fetch_ms,
+      answer_generation_ms: metrics.answer_generation_ms,
+      other_latency_ms: metrics.other_latency_ms,
       retrieval_hit_any: r.retrieval_hit_any ?? false,
       retrieval_hit_all: r.retrieval_hit_all ?? false,
       retrieval_recall: Number(r.retrieval_recall ?? 0),
@@ -177,6 +198,16 @@ export interface GroupSummary {
   p95_latency_ms: number;
   mean_step_count: number;
   mean_db_time_ms: number;
+  mean_active_latency_ms: number | null;
+  mean_rate_limit_wait_ms: number | null;
+  mean_llm_attempts: number | null;
+  mean_tool_call_failure_count: number | null;
+}
+
+function knownValues(rows: RunDetailRow[], key: keyof RunDetailRow): number[] {
+  return rows
+    .map((row) => row[key])
+    .filter((value): value is number => typeof value === 'number');
 }
 
 export function aggregateRows(rows: RunDetailRow[]): GroupSummary[] {
@@ -206,6 +237,10 @@ export function aggregateRows(rows: RunDetailRow[]): GroupSummary[] {
     const latencies = group.map((r) => r.latency_ms);
     const steps = group.map((r) => r.step_count);
     const dbTimes = group.map((r) => r.db_time_ms);
+    const activeLatencies = knownValues(group, 'active_latency_ms');
+    const rateLimitWaits = knownValues(group, 'rate_limit_wait_ms');
+    const llmAttempts = knownValues(group, 'llm_attempts');
+    const toolCallFailures = knownValues(group, 'tool_call_failure_count');
 
     summaries.push({
       system,
@@ -225,7 +260,11 @@ export function aggregateRows(rows: RunDetailRow[]): GroupSummary[] {
       mean_latency_ms: Math.round(mean(latencies)),
       p95_latency_ms: Math.round(p95(latencies)),
       mean_step_count: Number(mean(steps).toFixed(1)),
-      mean_db_time_ms: Math.round(mean(dbTimes))
+      mean_db_time_ms: Math.round(mean(dbTimes)),
+      mean_active_latency_ms: activeLatencies.length > 0 ? Math.round(mean(activeLatencies)) : null,
+      mean_rate_limit_wait_ms: rateLimitWaits.length > 0 ? Math.round(mean(rateLimitWaits)) : null,
+      mean_llm_attempts: llmAttempts.length > 0 ? Number(mean(llmAttempts).toFixed(1)) : null,
+      mean_tool_call_failure_count: toolCallFailures.length > 0 ? Number(mean(toolCallFailures).toFixed(1)) : null
     });
   }
 
@@ -236,7 +275,7 @@ export function formatAggregateMarkdownTable(summaries: GroupSummary[]): string 
   const headers = [
     'System', 'Corpus', 'Type', 'N', 'Fail',
     'HitAny', 'HitAll', 'Recall', 'CiteCorr', 'Score',
-    'Tokens(M/Med)', 'Cost', 'Latency(Mean/P95)', 'Steps', 'DbMs'
+    'Tokens(M/Med)', 'Cost', 'Latency(Mean/P95)', 'ActiveMs', 'WaitMs', 'Steps', 'LLMAttempts', 'ToolFails', 'DbMs'
   ];
 
   const rows = summaries.map((s) => [
@@ -253,7 +292,11 @@ export function formatAggregateMarkdownTable(summaries: GroupSummary[]): string 
     `${s.mean_tokens}/${s.median_tokens}`,
     `$${s.mean_cost.toFixed(4)}`,
     `${s.mean_latency_ms}/${s.p95_latency_ms}`,
+    s.mean_active_latency_ms === null ? 'n/a' : String(s.mean_active_latency_ms),
+    s.mean_rate_limit_wait_ms === null ? 'n/a' : String(s.mean_rate_limit_wait_ms),
     String(s.mean_step_count),
+    s.mean_llm_attempts === null ? 'n/a' : String(s.mean_llm_attempts),
+    s.mean_tool_call_failure_count === null ? 'n/a' : String(s.mean_tool_call_failure_count),
     s.system === 'rag' ? `${s.mean_db_time_ms}` : '-'
   ]);
 
@@ -280,6 +323,16 @@ export interface HeadToHeadRow {
   rag_cost_usd?: number;
   agentic_latency_ms: number;
   rag_latency_ms: number;
+  agentic_active_latency_ms?: number | null;
+  rag_active_latency_ms?: number | null;
+  agentic_rate_limit_wait_ms?: number | null;
+  rag_rate_limit_wait_ms?: number | null;
+  agentic_step_count?: number | null;
+  rag_step_count?: number | null;
+  agentic_llm_attempts?: number | null;
+  rag_llm_attempts?: number | null;
+  agentic_tool_call_failure_count?: number | null;
+  rag_tool_call_failure_count?: number | null;
   winner: 'agentic' | 'rag' | 'tie';
 }
 
@@ -328,6 +381,16 @@ export function buildHeadToHead(rows: RunDetailRow[]): HeadToHeadRow[] {
       rag_cost_usd: r.cost_usd,
       agentic_latency_ms: a.latency_ms,
       rag_latency_ms: r.latency_ms,
+      agentic_active_latency_ms: a.active_latency_ms,
+      rag_active_latency_ms: r.active_latency_ms,
+      agentic_rate_limit_wait_ms: a.rate_limit_wait_ms,
+      rag_rate_limit_wait_ms: r.rate_limit_wait_ms,
+      agentic_step_count: a.step_count,
+      rag_step_count: r.step_count,
+      agentic_llm_attempts: a.llm_attempts,
+      rag_llm_attempts: r.llm_attempts,
+      agentic_tool_call_failure_count: a.tool_call_failure_count,
+      rag_tool_call_failure_count: r.tool_call_failure_count,
       winner
     });
   }
@@ -336,7 +399,11 @@ export function buildHeadToHead(rows: RunDetailRow[]): HeadToHeadRow[] {
 }
 
 export function formatHeadToHeadMarkdown(h2h: HeadToHeadRow[]): string {
-  const headers = ['Question', 'Agent Score', 'RAG Score', 'Agent HitAll', 'RAG HitAll', 'Agent Tok', 'RAG Tok', 'Agent Lat(ms)', 'RAG Lat(ms)', 'Winner'];
+  const headers = ['Question', 'Agent Score', 'RAG Score', 'Agent HitAll', 'RAG HitAll', 'Agent Tok', 'RAG Tok', 'Agent Lat/Active', 'RAG Lat/Active', 'Agent Wait', 'RAG Wait', 'Agent Steps/LLM/Fail', 'RAG Steps/LLM/Fail', 'Winner'];
+  const compactMetrics = (latency: number, active: number | null | undefined, steps: number | null | undefined, attempts: number | null | undefined, failures: number | null | undefined): string => {
+    const value = (item: number | null | undefined) => item === null || item === undefined ? 'n/a' : String(item);
+    return `${latency}/${value(active)};${value(steps)}/${value(attempts)}/${value(failures)}`;
+  };
   const rows = h2h.map((h) => [
     h.question_id,
     h.agentic_score.toFixed(1),
@@ -345,8 +412,12 @@ export function formatHeadToHeadMarkdown(h2h: HeadToHeadRow[]): string {
     h.rag_hit_all ? 'yes' : 'no',
     String(h.agentic_tokens),
     String(h.rag_tokens),
-    String(h.agentic_latency_ms),
-    String(h.rag_latency_ms),
+    compactMetrics(h.agentic_latency_ms, h.agentic_active_latency_ms, h.agentic_step_count, h.agentic_llm_attempts, h.agentic_tool_call_failure_count),
+    compactMetrics(h.rag_latency_ms, h.rag_active_latency_ms, h.rag_step_count, h.rag_llm_attempts, h.rag_tool_call_failure_count),
+    h.agentic_rate_limit_wait_ms === null || h.agentic_rate_limit_wait_ms === undefined ? 'n/a' : String(h.agentic_rate_limit_wait_ms),
+    h.rag_rate_limit_wait_ms === null || h.rag_rate_limit_wait_ms === undefined ? 'n/a' : String(h.rag_rate_limit_wait_ms),
+    `${h.agentic_step_count ?? 'n/a'}/${h.agentic_llm_attempts ?? 'n/a'}/${h.agentic_tool_call_failure_count ?? 'n/a'}`,
+    `${h.rag_step_count ?? 'n/a'}/${h.rag_llm_attempts ?? 'n/a'}/${h.rag_tool_call_failure_count ?? 'n/a'}`,
     `**${h.winner.toUpperCase()}**`
   ]);
 
@@ -417,7 +488,7 @@ export async function generateFailuresMarkdown(
 export function exportRunsCsv(rows: RunDetailRow[]): string {
   const headers = [
     'run_id', 'system', 'corpus', 'question_id', 'question_type', 'model', 'status',
-    'repetition', 'total_tokens', 'cost_usd', 'latency_ms', 'step_count', 'db_time_ms',
+    'repetition', 'total_tokens', 'cost_usd', 'latency_ms', 'active_latency_ms', 'rate_limit_wait_ms', 'rate_limit_count', 'llm_attempts', 'tool_call_failure_count', 'step_count', 'db_time_ms',
     'retrieval_hit_any', 'retrieval_hit_all', 'retrieval_recall', 'citation_correct',
     'answer_score', 'judge_verdict', 'judge_reason', 'judge_tokens', 'judge_cost_usd'
   ];
@@ -437,6 +508,11 @@ export function exportRunsCsv(rows: RunDetailRow[]): string {
       r.total_tokens,
       r.cost_usd,
       r.latency_ms,
+      r.active_latency_ms,
+      r.rate_limit_wait_ms,
+      r.rate_limit_count,
+      r.llm_attempts,
+      r.tool_call_failure_count,
       r.step_count,
       r.db_time_ms,
       r.retrieval_hit_any,
@@ -473,6 +549,7 @@ export function generateAsciiSummary(summaries: GroupSummary[], h2h: HeadToHeadR
     'System', 'Corpus', 'Type', 'N', 'Fail',
     'HitAny', 'HitAll', 'Recall', 'CiteCorr', 'Score',
     'Tokens', 'Cost', 'Latency(ms)', 'Steps', 'DbMs'
+    , 'ActiveMs', 'WaitMs', 'LLMAttempts', 'ToolFails'
   ];
   const aggRows = summaries.map((s) => [
     s.system,
@@ -489,10 +566,14 @@ export function generateAsciiSummary(summaries: GroupSummary[], h2h: HeadToHeadR
     `$${s.mean_cost.toFixed(4)}`,
     `${s.mean_latency_ms}`,
     String(s.mean_step_count),
-    s.system === 'rag' ? `${s.mean_db_time_ms}` : '-'
+    s.system === 'rag' ? `${s.mean_db_time_ms}` : '-',
+    s.mean_active_latency_ms === null ? 'n/a' : String(s.mean_active_latency_ms),
+    s.mean_rate_limit_wait_ms === null ? 'n/a' : String(s.mean_rate_limit_wait_ms),
+    s.mean_llm_attempts === null ? 'n/a' : String(s.mean_llm_attempts),
+    s.mean_tool_call_failure_count === null ? 'n/a' : String(s.mean_tool_call_failure_count)
   ]);
 
-  const h2hHeaders = ['Question', 'Agent Score', 'RAG Score', 'Agent HitAll', 'RAG HitAll', 'Agent Tok', 'RAG Tok', 'Agent Lat(ms)', 'RAG Lat(ms)', 'Winner'];
+  const h2hHeaders = ['Question', 'Agent Score', 'RAG Score', 'Agent HitAll', 'RAG HitAll', 'Agent Tok', 'RAG Tok', 'Agent Lat/Active', 'RAG Lat/Active', 'Agent Wait', 'RAG Wait', 'Agent Steps/LLM/Fail', 'RAG Steps/LLM/Fail', 'Winner'];
   const h2hRows = h2h.map((h) => [
     h.question_id,
     h.agentic_score.toFixed(1),
@@ -501,8 +582,12 @@ export function generateAsciiSummary(summaries: GroupSummary[], h2h: HeadToHeadR
     h.rag_hit_all ? 'yes' : 'no',
     String(h.agentic_tokens),
     String(h.rag_tokens),
-    String(h.agentic_latency_ms),
-    String(h.rag_latency_ms),
+    `${h.agentic_latency_ms}/${h.agentic_active_latency_ms ?? 'n/a'}`,
+    `${h.rag_latency_ms}/${h.rag_active_latency_ms ?? 'n/a'}`,
+    String(h.agentic_rate_limit_wait_ms ?? 'n/a'),
+    String(h.rag_rate_limit_wait_ms ?? 'n/a'),
+    `${h.agentic_step_count ?? 'n/a'}/${h.agentic_llm_attempts ?? 'n/a'}/${h.agentic_tool_call_failure_count ?? 'n/a'}`,
+    `${h.rag_step_count ?? 'n/a'}/${h.rag_llm_attempts ?? 'n/a'}/${h.rag_tool_call_failure_count ?? 'n/a'}`,
     h.winner.toUpperCase()
   ]);
 

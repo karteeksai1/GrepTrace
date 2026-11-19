@@ -68,6 +68,16 @@ export interface QuestionRow {
   rag_cost_usd?: number;
   agentic_latency_ms: number;
   rag_latency_ms: number;
+  agentic_active_latency_ms?: number | null;
+  rag_active_latency_ms?: number | null;
+  agentic_rate_limit_wait_ms?: number | null;
+  rag_rate_limit_wait_ms?: number | null;
+  agentic_step_count?: number | null;
+  rag_step_count?: number | null;
+  agentic_llm_attempts?: number | null;
+  rag_llm_attempts?: number | null;
+  agentic_tool_call_failure_count?: number | null;
+  rag_tool_call_failure_count?: number | null;
   winner: 'agentic' | 'rag' | 'tie';
 }
 

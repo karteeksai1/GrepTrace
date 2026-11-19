@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import pg from 'pg';
-import { EventInput, EventRecord, LLMAttemptFailure, Run, RunStatus, SystemType } from '../types.js';
+import { EventInput, EventRecord, Run, RunStatus, SystemType } from '../types.js';
+import { LLMAttemptFailure } from '../llm/types.js';
 
 export interface StartRunParams {
   id?: string;
