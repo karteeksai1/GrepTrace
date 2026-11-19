@@ -5,6 +5,7 @@ import { fetchBatches } from './api/client.js';
 import { Header } from './components/Header.js';
 import { BatchDetailsPanel } from './components/BatchDetailsPanel.js';
 import { HomePage } from './pages/HomePage.js';
+import { ComparePage } from './pages/ComparePage.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -82,14 +83,7 @@ const AppShell: React.FC = () => {
               />
             }
           />
-          <Route
-            path="/compare/:questionId"
-            element={
-              <div className="max-w-7xl mx-auto px-4 py-12 text-center text-slate-500">
-                Compare View (coming in Step 3)
-              </div>
-            }
-          />
+          <Route path="/compare/:questionId" element={<ComparePage />} />
           <Route
             path="/runs/:runId"
             element={
