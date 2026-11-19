@@ -400,9 +400,9 @@ export function buildHeadToHead(rows: RunDetailRow[]): HeadToHeadRow[] {
 
 export function formatHeadToHeadMarkdown(h2h: HeadToHeadRow[]): string {
   const headers = ['Question', 'Agent Score', 'RAG Score', 'Agent HitAll', 'RAG HitAll', 'Agent Tok', 'RAG Tok', 'Agent Lat/Active', 'RAG Lat/Active', 'Agent Wait', 'RAG Wait', 'Agent Steps/LLM/Fail', 'RAG Steps/LLM/Fail', 'Winner'];
-  const compactMetrics = (latency: number, active: number | null | undefined, steps: number | null | undefined, attempts: number | null | undefined, failures: number | null | undefined): string => {
+  const compactMetrics = (latency: number, active: number | null | undefined): string => {
     const value = (item: number | null | undefined) => item === null || item === undefined ? 'n/a' : String(item);
-    return `${latency}/${value(active)};${value(steps)}/${value(attempts)}/${value(failures)}`;
+    return `${latency}/${value(active)}`;
   };
   const rows = h2h.map((h) => [
     h.question_id,
@@ -412,8 +412,8 @@ export function formatHeadToHeadMarkdown(h2h: HeadToHeadRow[]): string {
     h.rag_hit_all ? 'yes' : 'no',
     String(h.agentic_tokens),
     String(h.rag_tokens),
-    compactMetrics(h.agentic_latency_ms, h.agentic_active_latency_ms, h.agentic_step_count, h.agentic_llm_attempts, h.agentic_tool_call_failure_count),
-    compactMetrics(h.rag_latency_ms, h.rag_active_latency_ms, h.rag_step_count, h.rag_llm_attempts, h.rag_tool_call_failure_count),
+    compactMetrics(h.agentic_latency_ms, h.agentic_active_latency_ms),
+    compactMetrics(h.rag_latency_ms, h.rag_active_latency_ms),
     h.agentic_rate_limit_wait_ms === null || h.agentic_rate_limit_wait_ms === undefined ? 'n/a' : String(h.agentic_rate_limit_wait_ms),
     h.rag_rate_limit_wait_ms === null || h.rag_rate_limit_wait_ms === undefined ? 'n/a' : String(h.rag_rate_limit_wait_ms),
     `${h.agentic_step_count ?? 'n/a'}/${h.agentic_llm_attempts ?? 'n/a'}/${h.agentic_tool_call_failure_count ?? 'n/a'}`,

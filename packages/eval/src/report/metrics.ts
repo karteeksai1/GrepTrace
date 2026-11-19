@@ -49,14 +49,12 @@ export function deriveRunTimingMetrics(
   const latencyMs = timestampLatency ?? (events.length > 0 ? eventLatency : null);
   const failedAttempts = events.filter((event) => event.type === 'llm_attempt_failed');
   const modelTurns = events.filter((event) => event.type === 'model_turn');
-  const hasAttemptMetadata = failedAttempts.length > 0 || modelTurns.some((event) => {
+  const failedCalls = events.filter((event) => event.type === 'llm_call_failed');
+  const hasAttemptMetadata = failedAttempts.length > 0 || failedCalls.length > 0 || modelTurns.some((event) => {
     return event.args && Object.prototype.hasOwnProperty.call(event.args, 'llm_attempts');
   });
   const rateLimitWaitMs = hasAttemptMetadata
-    ? (sum([
-        ...failedAttempts.map((event) => numeric(event.args?.wait_ms) ?? 0),
-        ...modelTurns.map((event) => numeric(event.args?.rate_limit_wait_ms) ?? 0)
-      ]) ?? 0)
+    ? (sum(failedAttempts.map((event) => numeric(event.args?.wait_ms) ?? 0)) ?? 0)
     : null;
   const rateLimitCount = hasAttemptMetadata
     ? failedAttempts.filter((event) => event.args?.reason === 'rate_limited').length
@@ -66,7 +64,7 @@ export function deriveRunTimingMetrics(
     : null;
   const llmAttempts = hasAttemptMetadata
     ? modelTurns.reduce((total, event) => total + (numeric(event.args?.llm_attempts) ?? 1), 0) +
-      (modelTurns.length === 0 ? failedAttempts.length : 0)
+      failedCalls.reduce((total, event) => total + (numeric(event.args?.llm_attempts) ?? 0), 0)
     : null;
   const activeLatencyMs = latencyMs !== null && rateLimitWaitMs !== null
     ? Math.max(0, latencyMs - rateLimitWaitMs)

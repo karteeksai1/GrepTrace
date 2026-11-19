@@ -188,7 +188,7 @@ export const QuestionTable: React.FC<QuestionTableProps> = ({ batchId, questions
                 <th scope="col" className="py-3 px-3">RAG (Score / Hit)</th>
                 <th scope="col" className="py-3 px-3">Tokens (A / R)</th>
                 <th scope="col" className="py-3 px-3">Cost (A / R)</th>
-                <th scope="col" className="py-3 px-3">Latency (A / R)</th>
+                <th scope="col" className="py-3 px-3">Performance (A / R)</th>
                 <th scope="col" className="py-3 px-4">Winner</th>
               </tr>
             </thead>
@@ -259,12 +259,23 @@ export const QuestionTable: React.FC<QuestionTableProps> = ({ batchId, questions
                       <span>${q.rag_cost_usd?.toFixed(4) ?? '0.0000'}</span>
                     </td>
 
-                    <td className="py-3 px-3 text-xs font-mono text-slate-600 dark:text-slate-400">
-                      <span className="text-slate-900 dark:text-slate-200">
-                        {(q.agentic_latency_ms / 1000).toFixed(1)}s
-                      </span>
-                      <span className="text-slate-400 mx-1">/</span>
-                      <span>{(q.rag_latency_ms / 1000).toFixed(1)}s</span>
+                    <td className="py-3 px-3 text-xs font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                      <div>
+                        <span className="text-slate-900 dark:text-slate-200">
+                          {(q.agentic_latency_ms / 1000).toFixed(1)}s
+                        </span>
+                        <span className="text-slate-400 mx-1">/</span>
+                        <span>{(q.rag_latency_ms / 1000).toFixed(1)}s</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-1">
+                        Active {q.agentic_active_latency_ms ?? 'n/a'} / {q.rag_active_latency_ms ?? 'n/a'}ms
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        S {q.agentic_step_count ?? 'n/a'} / {q.rag_step_count ?? 'n/a'} · W {q.agentic_rate_limit_wait_ms ?? 'n/a'} / {q.rag_rate_limit_wait_ms ?? 'n/a'}ms
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        LLM {q.agentic_llm_attempts ?? 'n/a'} / {q.rag_llm_attempts ?? 'n/a'} · F {q.agentic_tool_call_failure_count ?? 'n/a'} / {q.rag_tool_call_failure_count ?? 'n/a'}
+                      </div>
                     </td>
 
                     <td className="py-3 px-4">

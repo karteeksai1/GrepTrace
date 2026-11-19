@@ -28,14 +28,14 @@ export function deriveRunTimingMetrics(events: RunEvent[], run?: RunRecord): Run
       : null;
   const failures = events.filter((event) => event.type === 'llm_attempt_failed');
   const modelTurns = events.filter((event) => event.type === 'model_turn');
-  const hasAttemptMetadata = failures.length > 0 || modelTurns.some((event) => event.args && 'llm_attempts' in event.args);
+  const failedCalls = events.filter((event) => event.type === 'llm_call_failed');
+  const hasAttemptMetadata = failures.length > 0 || failedCalls.length > 0 || modelTurns.some((event) => event.args && 'llm_attempts' in event.args);
   const rateLimitWaitMs = hasAttemptMetadata
-    ? failures.reduce((total, event) => total + (numeric(event.args?.wait_ms) ?? 0), 0) +
-      modelTurns.reduce((total, event) => total + (numeric(event.args?.rate_limit_wait_ms) ?? 0), 0)
+    ? failures.reduce((total, event) => total + (numeric(event.args?.wait_ms) ?? 0), 0)
     : null;
   const llmAttempts = hasAttemptMetadata
     ? modelTurns.reduce((total, event) => total + (numeric(event.args?.llm_attempts) ?? 1), 0) +
-      (modelTurns.length === 0 ? failures.length : 0)
+      failedCalls.reduce((total, event) => total + (numeric(event.args?.llm_attempts) ?? 0), 0)
     : null;
   const toolCallFailureCount = hasAttemptMetadata
     ? failures.filter((event) => event.args?.reason === 'tool_call_failed').length

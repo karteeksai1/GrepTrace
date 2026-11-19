@@ -1,6 +1,7 @@
 import React from 'react';
 import { GroundTruthLocation, RunDetailResponse, RunEventsResponse } from '../types.js';
 import { parseRunAnswer } from '../utils/highlight.js';
+import { deriveRunTimingMetrics } from '../utils/metrics.js';
 
 interface RagReplayViewProps {
   runDetail: RunDetailResponse;
@@ -17,13 +18,8 @@ export const RagReplayView: React.FC<RagReplayViewProps> = ({
   const parsed = parseRunAnswer(run.final_answer);
   const events = eventsData?.events ?? [];
 
-  const retrievalEvent = events.find((e) => e.type === 'retrieval');
-  const answerEvent = events.find((e) => e.type === 'answer_turn' || e.type === 'model_turn');
-
-  const totalRetrievalMs = retrievalEvent?.elapsed_ms || 0;
-  const dbTimeMs = retrievalEvent?.db_time_ms || 0;
-  const vectorQueryMs = Math.max(0, totalRetrievalMs - dbTimeMs);
-  const answerTimeMs = answerEvent?.elapsed_ms || 0;
+  const metrics = deriveRunTimingMetrics(events, run);
+  const displayMs = (value: number | null) => value === null ? 'n/a' : `${value}ms`;
 
   const groundTruthList: GroundTruthLocation[] = question?.ground_truth ?? [];
 
@@ -41,32 +37,46 @@ export const RagReplayView: React.FC<RagReplayViewProps> = ({
         <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 mb-4">
           Pipeline Latency Breakdown
         </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-            <span className="text-xs font-semibold text-slate-500 block">Total Retrieval</span>
+            <span className="text-xs font-semibold text-slate-500 block">Total Latency</span>
             <span className="text-xl font-bold font-mono text-orange-600 dark:text-orange-400 mt-1 block">
-              {totalRetrievalMs}ms
+              {displayMs(metrics.latencyMs)}
             </span>
           </div>
 
           <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-            <span className="text-xs font-semibold text-slate-500 block">Pinecone Vector Search</span>
+            <span className="text-xs font-semibold text-slate-500 block">Embedding</span>
             <span className="text-xl font-bold font-mono text-orange-600 dark:text-orange-400 mt-1 block">
-              {vectorQueryMs}ms
+              {displayMs(metrics.embeddingMs)}
             </span>
           </div>
 
           <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-            <span className="text-xs font-semibold text-slate-500 block">Neon Database Fetch</span>
+            <span className="text-xs font-semibold text-slate-500 block">Pinecone Query</span>
             <span className="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1 block">
-              {dbTimeMs}ms
+              {displayMs(metrics.pineconeQueryMs)}
+            </span>
+          </div>
+
+          <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+            <span className="text-xs font-semibold text-slate-500 block">Neon Fetch</span>
+            <span className="text-xl font-bold font-mono text-slate-900 dark:text-slate-100 mt-1 block">
+              {displayMs(metrics.neonFetchMs)}
             </span>
           </div>
 
           <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
             <span className="text-xs font-semibold text-slate-500 block">Answer Generation</span>
             <span className="text-xl font-bold font-mono text-slate-900 dark:text-slate-100 mt-1 block">
-              {(answerTimeMs / 1000).toFixed(2)}s
+              {displayMs(metrics.answerGenerationMs)}
+            </span>
+          </div>
+
+          <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+            <span className="text-xs font-semibold text-slate-500 block">Other</span>
+            <span className="text-xl font-bold font-mono text-slate-900 dark:text-slate-100 mt-1 block">
+              {displayMs(metrics.otherLatencyMs)}
             </span>
           </div>
         </div>

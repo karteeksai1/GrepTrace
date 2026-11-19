@@ -82,12 +82,12 @@ describe('Agent Trace Logging', () => {
       tool: null
     });
     expect(loggedEvents[1]).toEqual({
-      step: 2,
+      step: 1,
       type: 'tool_call',
       tool: 'grep'
     });
     expect(loggedEvents[2]).toEqual({
-      step: 3,
+      step: 2,
       type: 'model_turn',
       tool: null
     });

@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { GroundTruthLocation, RunDetailResponse, RunEventsResponse } from '../types.js';
 import { parseRunAnswer } from '../utils/highlight.js';
+import { deriveRunTimingMetrics } from '../utils/metrics.js';
 
 interface CompareColumnProps {
   title: string;
@@ -42,12 +43,12 @@ export const CompareColumn: React.FC<CompareColumnProps> = ({
   const parsed = parseRunAnswer(run.final_answer);
   const events = eventsData?.events ?? [];
 
-  const stepCount = events.length > 0 ? events.length : (run.system === 'agentic' ? 'n/a' : 1);
-  const totalLatency = events.reduce((sum, e) => sum + (e.elapsed_ms || 0), 0);
+  const metrics = deriveRunTimingMetrics(events, run);
   const retrievalEvent = events.find((e) => e.type === 'retrieval');
   const dbTimeMs = retrievalEvent?.db_time_ms ?? 0;
   const totalRetrievalMs = retrievalEvent?.elapsed_ms ?? 0;
   const vectorTimeMs = Math.max(0, totalRetrievalMs - dbTimeMs);
+  const displayMetric = (value: number | null | undefined, suffix = '') => value === null || value === undefined ? 'n/a' : `${value}${suffix}`;
 
   const getVerdictBadge = () => {
     if (!score) return null;
@@ -89,7 +90,14 @@ export const CompareColumn: React.FC<CompareColumnProps> = ({
             <div>
               <span className="text-slate-500 dark:text-slate-400 block">Steps</span>
               <span className="font-semibold text-slate-900 dark:text-slate-100 font-mono text-sm">
-                {stepCount}
+                {displayMetric(metrics.stepCount)}
+              </span>
+            </div>
+
+            <div>
+              <span className="text-slate-500 dark:text-slate-400 block">LLM Attempts</span>
+              <span className="font-semibold text-slate-900 dark:text-slate-100 font-mono text-sm">
+                {displayMetric(metrics.llmAttempts)}
               </span>
             </div>
 
@@ -110,7 +118,28 @@ export const CompareColumn: React.FC<CompareColumnProps> = ({
             <div>
               <span className="text-slate-500 dark:text-slate-400 block">Latency</span>
               <span className="font-semibold text-slate-900 dark:text-slate-100 font-mono text-sm">
-                {totalLatency > 0 ? `${(totalLatency / 1000).toFixed(2)}s` : 'n/a'}
+                {metrics.latencyMs === null ? 'n/a' : `${(metrics.latencyMs / 1000).toFixed(2)}s`}
+              </span>
+            </div>
+
+            <div>
+              <span className="text-slate-500 dark:text-slate-400 block">Active</span>
+              <span className="font-semibold text-slate-900 dark:text-slate-100 font-mono text-sm">
+                {metrics.activeLatencyMs === null ? 'n/a' : `${(metrics.activeLatencyMs / 1000).toFixed(2)}s`}
+              </span>
+            </div>
+
+            <div>
+              <span className="text-slate-500 dark:text-slate-400 block">Rate-limit Wait</span>
+              <span className="font-semibold text-slate-900 dark:text-slate-100 font-mono text-sm">
+                {metrics.rateLimitWaitMs === null ? 'n/a' : `${(metrics.rateLimitWaitMs / 1000).toFixed(2)}s`}
+              </span>
+            </div>
+
+            <div>
+              <span className="text-slate-500 dark:text-slate-400 block">Tool Failures</span>
+              <span className="font-semibold text-slate-900 dark:text-slate-100 font-mono text-sm">
+                {displayMetric(metrics.toolCallFailureCount)}
               </span>
             </div>
           </div>

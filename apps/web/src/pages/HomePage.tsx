@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchBatchQuestions } from '../api/client.js';
+import { fetchBatchQuestions, fetchBatchSummary } from '../api/client.js';
 import { QuestionTable } from '../components/QuestionTable.js';
 import { BatchItem } from '../types.js';
 
@@ -29,6 +29,11 @@ export const HomePage: React.FC<HomePageProps> = ({
   });
 
   const questions = questionsData?.questions ?? [];
+  const { data: summaryData } = useQuery({
+    queryKey: ['batchSummary', batchId],
+    queryFn: () => fetchBatchSummary(batchId),
+    enabled: Boolean(batchId)
+  });
 
   const metrics = useMemo(() => {
     let agenticWins = 0;
@@ -151,7 +156,50 @@ export const HomePage: React.FC<HomePageProps> = ({
           </button>
         </div>
       ) : (
-        <QuestionTable batchId={batchId} questions={questions} />
+        <>
+          <QuestionTable batchId={batchId} questions={questions} />
+          {summaryData?.summaries && summaryData.summaries.length > 0 && (
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-slate-200 dark:border-slate-800">
+                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Aggregate Performance</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Means by system and question type; n/a means the run data predates this measurement.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400">
+                      <th className="py-2.5 px-4">System</th>
+                      <th className="py-2.5 px-3">Type</th>
+                      <th className="py-2.5 px-3">N</th>
+                      <th className="py-2.5 px-3">Total / Active</th>
+                      <th className="py-2.5 px-3">Wait</th>
+                      <th className="py-2.5 px-3">Steps</th>
+                      <th className="py-2.5 px-3">LLM Attempts</th>
+                      <th className="py-2.5 px-4">Tool Failures</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {summaryData.summaries.map((summary) => {
+                      const value = (item: number | null) => item === null ? 'n/a' : String(item);
+                      return (
+                        <tr key={`${summary.system}-${summary.corpus}-${summary.question_type}`}>
+                          <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-slate-200">{summary.system}</td>
+                          <td className="py-2.5 px-3 text-slate-500">{summary.question_type}</td>
+                          <td className="py-2.5 px-3 font-mono text-slate-700 dark:text-slate-300">{summary.total_runs}</td>
+                          <td className="py-2.5 px-3 font-mono text-slate-700 dark:text-slate-300">{summary.mean_latency_ms} / {value(summary.mean_active_latency_ms)}ms</td>
+                          <td className="py-2.5 px-3 font-mono text-slate-700 dark:text-slate-300">{value(summary.mean_rate_limit_wait_ms)}ms</td>
+                          <td className="py-2.5 px-3 font-mono text-slate-700 dark:text-slate-300">{summary.mean_step_count}</td>
+                          <td className="py-2.5 px-3 font-mono text-slate-700 dark:text-slate-300">{value(summary.mean_llm_attempts)}</td>
+                          <td className="py-2.5 px-4 font-mono text-slate-700 dark:text-slate-300">{value(summary.mean_tool_call_failure_count)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

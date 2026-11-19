@@ -259,6 +259,10 @@ export function calculateRunningTotals(
   for (const ev of slice) {
     tokens += ev.tokens || 0;
     elapsedMs += ev.elapsed_ms || 0;
+    if (ev.type === 'llm_attempt_failed') {
+      const waitMs = ev.args?.wait_ms;
+      if (typeof waitMs === 'number') elapsedMs += waitMs;
+    }
   }
 
   const cost = (tokens / 1000) * costPer1kTokens;

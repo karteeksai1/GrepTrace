@@ -31,7 +31,8 @@ export class OpenAIClient implements LLMClient {
     this.apiKey = options.apiKey ?? process.env.LLM_API_KEY ?? process.env.OPENAI_API_KEY ?? process.env.GROQ_API_KEY ?? '';
     this.baseUrl = (options.baseUrl ?? process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
     this.defaultModel = options.defaultModel ?? process.env.LLM_MODEL ?? 'gpt-4o-mini';
-    this.maxRetries = options.maxRetries ?? 3;
+    const configuredRetries = Number.parseInt(process.env.LLM_MAX_RETRIES ?? '', 10);
+    this.maxRetries = options.maxRetries ?? (Number.isFinite(configuredRetries) && configuredRetries >= 0 ? configuredRetries : 3);
   }
 
   getDefaultModel(): string {
@@ -168,7 +169,7 @@ export class OpenAIClient implements LLMClient {
       if (!response.ok) {
         const errorText = await response.text();
         const reason = this.classifyFailure(response.status, errorText);
-        const waitMs = this.getWaitMs(reason, response, errorText, attempt);
+        const waitMs = attempt < maxAttempts ? this.getWaitMs(reason, response, errorText, attempt) : 0;
         if (reason === 'rate_limited') rateLimitCount++;
         if (reason === 'tool_call_failed') toolCallFailureCount++;
         failedAttempts.push({
@@ -213,8 +214,8 @@ export class OpenAIClient implements LLMClient {
           completionTokens,
           totalTokens
         },
-        costUsd: calculateCost(model, promptTokens, completionTokens)
-        , attempts: attempt,
+        costUsd: calculateCost(model, promptTokens, completionTokens),
+        attempts: attempt,
         activeTimeMs,
         waitTimeMs,
         rateLimitCount,

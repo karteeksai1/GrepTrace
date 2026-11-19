@@ -40,6 +40,10 @@ export interface GroupSummary {
   p95_latency_ms: number;
   mean_step_count: number;
   mean_db_time_ms: number;
+  mean_active_latency_ms: number | null;
+  mean_rate_limit_wait_ms: number | null;
+  mean_llm_attempts: number | null;
+  mean_tool_call_failure_count: number | null;
 }
 
 export interface BatchSummaryResponse {

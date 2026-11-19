@@ -255,6 +255,18 @@ export async function runRagPipeline(options: RagRunOptions): Promise<RagRunResu
   } catch (err) {
     if (err instanceof LLMRequestError) {
       await logger.logLLMAttemptFailures(err.failedAttempts, step);
+      await logger.logEvent({
+        step,
+        type: 'llm_call_failed',
+        args: {
+          llm_attempts: err.attempts,
+          rate_limit_count: err.rateLimitCount,
+          rate_limit_wait_ms: err.waitTimeMs,
+          tool_call_failure_count: err.toolCallFailureCount
+        },
+        result_summary: err.message,
+        elapsed_ms: err.activeTimeMs
+      });
     }
     const errMsg = (err as Error).message;
     await logger.logEvent({

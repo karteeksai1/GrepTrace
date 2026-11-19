@@ -100,6 +100,10 @@ describe('Eval Reporter Aggregations', () => {
     expect(s.citation_correct_rate).toBe(0.5);
     expect(s.mean_score).toBe(0.75);
     expect(s.mean_tokens).toBe(1500);
+    expect(s.mean_active_latency_ms).toBeNull();
+    expect(s.mean_rate_limit_wait_ms).toBeNull();
+    expect(s.mean_llm_attempts).toBeNull();
+    expect(s.mean_tool_call_failure_count).toBeNull();
   });
 
   it('builds head to head comparisons between agentic and rag', () => {
