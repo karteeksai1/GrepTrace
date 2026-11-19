@@ -6,6 +6,7 @@ import { Header } from './components/Header.js';
 import { BatchDetailsPanel } from './components/BatchDetailsPanel.js';
 import { HomePage } from './pages/HomePage.js';
 import { ComparePage } from './pages/ComparePage.js';
+import { ReplayPage } from './pages/ReplayPage.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -84,14 +85,7 @@ const AppShell: React.FC = () => {
             }
           />
           <Route path="/compare/:questionId" element={<ComparePage />} />
-          <Route
-            path="/runs/:runId"
-            element={
-              <div className="max-w-7xl mx-auto px-4 py-12 text-center text-slate-500">
-                Replay View (coming in Step 4)
-              </div>
-            }
-          />
+          <Route path="/runs/:runId" element={<ReplayPage />} />
           <Route
             path="/dashboard"
             element={
