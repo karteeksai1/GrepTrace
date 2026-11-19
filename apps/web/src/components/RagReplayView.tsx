@@ -18,7 +18,7 @@ export const RagReplayView: React.FC<RagReplayViewProps> = ({
   const events = eventsData?.events ?? [];
 
   const retrievalEvent = events.find((e) => e.type === 'retrieval');
-  const answerEvent = events.find((e) => e.type === 'answer_turn');
+  const answerEvent = events.find((e) => e.type === 'answer_turn' || e.type === 'model_turn');
 
   const totalRetrievalMs = retrievalEvent?.elapsed_ms || 0;
   const dbTimeMs = retrievalEvent?.db_time_ms || 0;

@@ -6,6 +6,7 @@ import {
   getSystemPrompt,
   GroundTruthLocation,
   LLMClient,
+  LLMRequestError,
   parseFinalAnswer,
   TraceLogger
 } from '@greptrace/core';
@@ -69,7 +70,6 @@ export async function runRagPipeline(options: RagRunOptions): Promise<RagRunResu
       topK
     );
 
-    step++;
     const filesTouched = Array.from(new Set(retrieval.chunks.map((c) => c.file)));
     const resultBytes = Buffer.byteLength(
       JSON.stringify(retrieval.chunks.map((c) => c.content)),
@@ -79,7 +79,13 @@ export async function runRagPipeline(options: RagRunOptions): Promise<RagRunResu
     await logger.logEvent({
       step,
       type: 'retrieval',
-      args: { question: options.question, top_k: topK },
+      args: {
+        question: options.question,
+        top_k: topK,
+        embedding_ms: retrieval.embeddingTimeMs,
+        pinecone_query_ms: retrieval.pineconeQueryTimeMs,
+        neon_fetch_ms: retrieval.neonFetchTimeMs
+      },
       result_summary: `Retrieved ${retrieval.chunks.length} chunks from namespace '${options.pineconeNamespace}'`,
       result_bytes: resultBytes,
       files_touched: filesTouched,
@@ -102,7 +108,9 @@ export async function runRagPipeline(options: RagRunOptions): Promise<RagRunResu
       messages,
       temperature: 0
     });
-    const modelElapsed = Date.now() - modelStart;
+    const modelElapsed = response.activeTimeMs ?? Date.now() - modelStart;
+
+    await logger.logLLMAttemptFailures(response.failedAttempts ?? [], step);
 
     totalTokens += response.usage.totalTokens;
     totalCostUsd += response.costUsd;
@@ -111,6 +119,13 @@ export async function runRagPipeline(options: RagRunOptions): Promise<RagRunResu
     await logger.logEvent({
       step,
       type: 'model_turn',
+      args: {
+        outcome: 'final_answer',
+        llm_attempts: response.attempts ?? 1,
+        rate_limit_count: response.rateLimitCount ?? 0,
+        rate_limit_wait_ms: response.waitTimeMs ?? 0,
+        tool_call_failure_count: response.toolCallFailureCount ?? 0
+      },
       tokens: response.usage.totalTokens,
       elapsed_ms: modelElapsed
     });
@@ -157,7 +172,9 @@ export async function runRagPipeline(options: RagRunOptions): Promise<RagRunResu
       messages,
       temperature: 0
     });
-    const repairElapsed = Date.now() - repairStart;
+    const repairElapsed = repairRes.activeTimeMs ?? Date.now() - repairStart;
+
+    await logger.logLLMAttemptFailures(repairRes.failedAttempts ?? [], step);
 
     totalTokens += repairRes.usage.totalTokens;
     totalCostUsd += repairRes.costUsd;
@@ -166,6 +183,13 @@ export async function runRagPipeline(options: RagRunOptions): Promise<RagRunResu
     await logger.logEvent({
       step,
       type: 'model_turn',
+      args: {
+        outcome: 'final_answer',
+        llm_attempts: repairRes.attempts ?? 1,
+        rate_limit_count: repairRes.rateLimitCount ?? 0,
+        rate_limit_wait_ms: repairRes.waitTimeMs ?? 0,
+        tool_call_failure_count: repairRes.toolCallFailureCount ?? 0
+      },
       tokens: repairRes.usage.totalTokens,
       elapsed_ms: repairElapsed
     });
@@ -203,7 +227,6 @@ export async function runRagPipeline(options: RagRunOptions): Promise<RagRunResu
       };
     }
 
-    step++;
     await logger.logEvent({
       step,
       type: 'error',
@@ -230,7 +253,9 @@ export async function runRagPipeline(options: RagRunOptions): Promise<RagRunResu
       status: 'failed'
     };
   } catch (err) {
-    step++;
+    if (err instanceof LLMRequestError) {
+      await logger.logLLMAttemptFailures(err.failedAttempts, step);
+    }
     const errMsg = (err as Error).message;
     await logger.logEvent({
       step,

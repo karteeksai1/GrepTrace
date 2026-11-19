@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import pg from 'pg';
-import { EventInput, EventRecord, Run, RunStatus, SystemType } from '../types.js';
+import { EventInput, EventRecord, LLMAttemptFailure, Run, RunStatus, SystemType } from '../types.js';
 
 export interface StartRunParams {
   id?: string;
@@ -96,6 +96,24 @@ export class TraceLogger {
       db_time_ms: row.db_time_ms,
       created_at: row.created_at
     };
+  }
+
+  async logLLMAttemptFailures(failures: LLMAttemptFailure[], step: number): Promise<void> {
+    for (const failure of failures) {
+      await this.logEvent({
+        step,
+        type: 'llm_attempt_failed',
+        args: {
+          reason: failure.reason,
+          attempt: failure.attempt,
+          status: failure.status,
+          wait_ms: failure.waitMs,
+          active_time_ms: failure.activeTimeMs
+        },
+        result_summary: failure.message,
+        elapsed_ms: failure.activeTimeMs
+      });
+    }
   }
 
   async finishRun(params: FinishRunParams): Promise<void> {

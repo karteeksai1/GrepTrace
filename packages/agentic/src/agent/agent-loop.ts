@@ -1,4 +1,4 @@
-import { ChatMessage, GroundTruthLocation, LLMClient, TraceLogger } from '@greptrace/core';
+import { ChatMessage, GroundTruthLocation, LLMClient, LLMRequestError, TraceLogger } from '@greptrace/core';
 import { AGENT_TOOLS, CorpusSandbox, executeToolCall } from '../tools/index.js';
 import { parseFinalAnswer } from './parser.js';
 import { getAgentSystemPrompt, getLimitReachedPrompt, getRepairPrompt } from './prompts.js';
@@ -62,7 +62,9 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
         tools: AGENT_TOOLS,
         temperature: 0
       });
-      const turnElapsed = Date.now() - turnStart;
+      const turnElapsed = response.activeTimeMs ?? Date.now() - turnStart;
+
+      await logger.logLLMAttemptFailures(response.failedAttempts ?? [], step);
 
       totalTokens += response.usage.totalTokens;
       totalCostUsd += response.costUsd;
@@ -71,6 +73,13 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
       await logger.logEvent({
         step,
         type: 'model_turn',
+        args: {
+          outcome: response.toolCalls && response.toolCalls.length > 0 ? 'tool_call' : 'final_answer',
+          llm_attempts: response.attempts ?? 1,
+          rate_limit_count: response.rateLimitCount ?? 0,
+          rate_limit_wait_ms: response.waitTimeMs ?? 0,
+          tool_call_failure_count: response.toolCallFailureCount ?? 0
+        },
         tokens: response.usage.totalTokens,
         elapsed_ms: turnElapsed
       });
@@ -91,7 +100,6 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
             readRanges.push(toolResult.readRange);
           }
 
-          step++;
           await logger.logEvent({
             step,
             type: 'tool_call',
@@ -145,7 +153,9 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
           messages,
           temperature: 0
         });
-        const repairElapsed = Date.now() - repairStart;
+        const repairElapsed = repairRes.activeTimeMs ?? Date.now() - repairStart;
+
+        await logger.logLLMAttemptFailures(repairRes.failedAttempts ?? [], step);
 
         totalTokens += repairRes.usage.totalTokens;
         totalCostUsd += repairRes.costUsd;
@@ -154,6 +164,13 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
         await logger.logEvent({
           step,
           type: 'model_turn',
+          args: {
+            outcome: 'final_answer',
+            llm_attempts: repairRes.attempts ?? 1,
+            rate_limit_count: repairRes.rateLimitCount ?? 0,
+            rate_limit_wait_ms: repairRes.waitTimeMs ?? 0,
+            tool_call_failure_count: repairRes.toolCallFailureCount ?? 0
+          },
           tokens: repairRes.usage.totalTokens,
           elapsed_ms: repairElapsed
         });
@@ -183,7 +200,6 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
           };
         }
 
-        step++;
         await logger.logEvent({
           step,
           type: 'error',
@@ -217,7 +233,10 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
       messages,
       temperature: 0
     });
-    const limitElapsed = Date.now() - limitStart;
+    const limitElapsed = limitRes.activeTimeMs ?? Date.now() - limitStart;
+    const finalParsed = parseFinalAnswer(limitRes.text);
+
+    await logger.logLLMAttemptFailures(limitRes.failedAttempts ?? [], step);
 
     totalTokens += limitRes.usage.totalTokens;
     totalCostUsd += limitRes.costUsd;
@@ -226,11 +245,17 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
     await logger.logEvent({
       step,
       type: 'model_turn',
+      args: {
+        outcome: finalParsed.ok ? 'final_answer' : 'repair',
+        llm_attempts: limitRes.attempts ?? 1,
+        rate_limit_count: limitRes.rateLimitCount ?? 0,
+        rate_limit_wait_ms: limitRes.waitTimeMs ?? 0,
+        tool_call_failure_count: limitRes.toolCallFailureCount ?? 0
+      },
       tokens: limitRes.usage.totalTokens,
       elapsed_ms: limitElapsed
     });
 
-    const finalParsed = parseFinalAnswer(limitRes.text);
     if (finalParsed.ok) {
       const payload = {
         answer: finalParsed.data.answer,
@@ -263,9 +288,23 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
       messages,
       temperature: 0
     });
+    await logger.logLLMAttemptFailures(limitRepairRes.failedAttempts ?? [], step);
     totalTokens += limitRepairRes.usage.totalTokens;
     totalCostUsd += limitRepairRes.costUsd;
     step++;
+    await logger.logEvent({
+      step,
+      type: 'model_turn',
+      args: {
+        outcome: 'final_answer',
+        llm_attempts: limitRepairRes.attempts ?? 1,
+        rate_limit_count: limitRepairRes.rateLimitCount ?? 0,
+        rate_limit_wait_ms: limitRepairRes.waitTimeMs ?? 0,
+        tool_call_failure_count: limitRepairRes.toolCallFailureCount ?? 0
+      },
+      tokens: limitRepairRes.usage.totalTokens,
+      elapsed_ms: limitRepairRes.activeTimeMs ?? 0
+    });
 
     const limitRepairedParsed = parseFinalAnswer(limitRepairRes.text);
     if (limitRepairedParsed.ok) {
@@ -292,7 +331,6 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
       };
     }
 
-    step++;
     await logger.logEvent({
       step,
       type: 'error',
@@ -317,7 +355,9 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentRunRe
       status: 'failed'
     };
   } catch (err) {
-    step++;
+    if (err instanceof LLMRequestError) {
+      await logger.logLLMAttemptFailures(err.failedAttempts, step);
+    }
     const errMsg = (err as Error).message;
     await logger.logEvent({
       step,

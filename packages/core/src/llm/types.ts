@@ -43,6 +43,54 @@ export interface LLMResponse {
   toolCalls?: ToolCall[];
   usage: TokenUsage;
   costUsd: number;
+  attempts?: number;
+  activeTimeMs?: number;
+  waitTimeMs?: number;
+  rateLimitCount?: number;
+  toolCallFailureCount?: number;
+  failedAttempts?: LLMAttemptFailure[];
+}
+
+export type LLMAttemptReason =
+  | 'rate_limited'
+  | 'tool_call_failed'
+  | 'transient_server'
+  | 'other_error';
+
+export interface LLMAttemptFailure {
+  attempt: number;
+  reason: LLMAttemptReason;
+  status: number;
+  message: string;
+  waitMs: number;
+  activeTimeMs: number;
+}
+
+export class LLMRequestError extends Error {
+  readonly attempts: number;
+  readonly activeTimeMs: number;
+  readonly waitTimeMs: number;
+  readonly rateLimitCount: number;
+  readonly toolCallFailureCount: number;
+  readonly failedAttempts: LLMAttemptFailure[];
+
+  constructor(message: string, details: {
+    attempts: number;
+    activeTimeMs: number;
+    waitTimeMs: number;
+    rateLimitCount: number;
+    toolCallFailureCount: number;
+    failedAttempts: LLMAttemptFailure[];
+  }) {
+    super(message);
+    this.name = 'LLMRequestError';
+    this.attempts = details.attempts;
+    this.activeTimeMs = details.activeTimeMs;
+    this.waitTimeMs = details.waitTimeMs;
+    this.rateLimitCount = details.rateLimitCount;
+    this.toolCallFailureCount = details.toolCallFailureCount;
+    this.failedAttempts = details.failedAttempts;
+  }
 }
 
 export interface LLMClient {

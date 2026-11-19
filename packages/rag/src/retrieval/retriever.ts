@@ -4,6 +4,9 @@ import { CodeChunk } from '../chunking/types.js';
 
 export interface RetrievalResult {
   chunks: CodeChunk[];
+  embeddingTimeMs: number;
+  pineconeQueryTimeMs: number;
+  neonFetchTimeMs: number;
   dbTimeMs: number;
   totalRetrievalMs: number;
   tokensUsed: number;
@@ -18,7 +21,9 @@ export async function retrieveChunks(
   topK = 8
 ): Promise<RetrievalResult> {
   const totalStart = Date.now();
+  const embeddingStart = Date.now();
   const embedRes = await embeddingClient.embed([question], 'query');
+  const embeddingTimeMs = Date.now() - embeddingStart;
   const queryVector = embedRes.embeddings[0];
 
   const pc = new Pinecone({ apiKey: pineconeApiKey });
@@ -50,6 +55,9 @@ export async function retrieveChunks(
 
   return {
     chunks,
+    embeddingTimeMs,
+    pineconeQueryTimeMs: dbTimeMs,
+    neonFetchTimeMs: 0,
     dbTimeMs,
     totalRetrievalMs,
     tokensUsed: embedRes.totalTokens ?? 0
