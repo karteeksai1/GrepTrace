@@ -80,4 +80,40 @@ describe('LLM attempt measurement', () => {
     expect(error.failedAttempts[0].reason).toBe('other_error');
     otherFetch.mockRestore();
   });
+
+  it('keeps retrying rate limits beyond the tool retry budget', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('limited', { status: 429, headers: { 'retry-after': '0' } }))
+      .mockResolvedValueOnce(new Response('limited', { status: 429, headers: { 'retry-after': '0' } }))
+      .mockResolvedValueOnce(new Response('limited', { status: 429, headers: { 'retry-after': '0' } }))
+      .mockResolvedValueOnce(successResponse());
+    const client = new OpenAIClient({ baseUrl: 'https://groq.test', maxRetries: 0 });
+    const response = await client.chat({ messages: [{ role: 'user', content: 'hello' }] });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(response.rateLimitCount).toBe(3);
+    fetchMock.mockRestore();
+  });
+
+  it('stops at the rate limit wait cap with a clear reason', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => new Response('limited', { status: 429, headers: { 'retry-after': '1' } }));
+    const client = new OpenAIClient({ baseUrl: 'https://groq.test', rateLimitMaxWaitMs: 10 });
+    const error = await client.chat({ messages: [{ role: 'user', content: 'hello' }] }).catch((value) => value as LLMRequestError);
+    expect(error.message).toContain('rate_limit_wait_cap_exceeded');
+    expect(error.waitTimeMs).toBe(10);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    fetchMock.mockRestore();
+  });
+
+  it('honors retry-after and calls the shared pacer for every request', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('limited', { status: 429, headers: { 'retry-after': '0.001' } }))
+      .mockResolvedValueOnce(successResponse());
+    const waitForSlot = vi.fn().mockResolvedValue(undefined);
+    const client = new OpenAIClient({ baseUrl: 'https://groq.test', requestPacer: { waitForSlot } });
+    const response = await client.chat({ messages: [{ role: 'user', content: 'hello' }] });
+    expect(response.waitTimeMs).toBe(1);
+    expect(waitForSlot).toHaveBeenCalledTimes(2);
+    fetchMock.mockRestore();
+  });
 });

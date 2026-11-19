@@ -28,6 +28,8 @@ export interface RunDetailRow {
   neon_fetch_ms?: number | null;
   answer_generation_ms?: number | null;
   other_latency_ms?: number | null;
+  failure_reason?: string | null;
+  last_error_class?: string | null;
   retrieval_hit_any: boolean;
   retrieval_hit_all: boolean;
   retrieval_recall: number;
@@ -163,6 +165,8 @@ export async function fetchBatchRunRows(pool: pg.Pool, batchName: string, rootDi
       neon_fetch_ms: metrics.neon_fetch_ms,
       answer_generation_ms: metrics.answer_generation_ms,
       other_latency_ms: metrics.other_latency_ms,
+      failure_reason: metrics.failure_reason,
+      last_error_class: metrics.last_error_class,
       retrieval_hit_any: r.retrieval_hit_any ?? false,
       retrieval_hit_all: r.retrieval_hit_all ?? false,
       retrieval_recall: Number(r.retrieval_recall ?? 0),
@@ -274,7 +278,7 @@ export function aggregateRows(rows: RunDetailRow[]): GroupSummary[] {
 export function formatAggregateMarkdownTable(summaries: GroupSummary[]): string {
   const headers = [
     'System', 'Corpus', 'Type', 'N', 'Fail',
-    'HitAny', 'HitAll', 'Recall', 'CiteCorr', 'Score',
+    'HitAny', 'HitAll', 'Recall', 'CiteCorr', 'Score', 'FailedRuns',
     'Tokens(M/Med)', 'Cost', 'Latency(Mean/P95)', 'ActiveMs', 'WaitMs', 'Steps', 'LLMAttempts', 'ToolFails', 'DbMs'
   ];
 
@@ -289,6 +293,7 @@ export function formatAggregateMarkdownTable(summaries: GroupSummary[]): string 
     s.mean_recall.toFixed(2),
     `${(s.citation_correct_rate * 100).toFixed(0)}%`,
     s.mean_score.toFixed(2),
+    String(s.failures),
     `${s.mean_tokens}/${s.median_tokens}`,
     `$${s.mean_cost.toFixed(4)}`,
     `${s.mean_latency_ms}/${s.p95_latency_ms}`,
@@ -333,6 +338,10 @@ export interface HeadToHeadRow {
   rag_llm_attempts?: number | null;
   agentic_tool_call_failure_count?: number | null;
   rag_tool_call_failure_count?: number | null;
+  agentic_status?: string;
+  rag_status?: string;
+  agentic_failure_reason?: string | null;
+  rag_failure_reason?: string | null;
   winner: 'agentic' | 'rag' | 'tie';
 }
 
@@ -391,6 +400,10 @@ export function buildHeadToHead(rows: RunDetailRow[]): HeadToHeadRow[] {
       rag_llm_attempts: r.llm_attempts,
       agentic_tool_call_failure_count: a.tool_call_failure_count,
       rag_tool_call_failure_count: r.tool_call_failure_count,
+      agentic_status: a.status,
+      rag_status: r.status,
+      agentic_failure_reason: a.failure_reason,
+      rag_failure_reason: r.failure_reason,
       winner
     });
   }
@@ -399,15 +412,17 @@ export function buildHeadToHead(rows: RunDetailRow[]): HeadToHeadRow[] {
 }
 
 export function formatHeadToHeadMarkdown(h2h: HeadToHeadRow[]): string {
-  const headers = ['Question', 'Agent Score', 'RAG Score', 'Agent HitAll', 'RAG HitAll', 'Agent Tok', 'RAG Tok', 'Agent Lat/Active', 'RAG Lat/Active', 'Agent Wait', 'RAG Wait', 'Agent Steps/LLM/Fail', 'RAG Steps/LLM/Fail', 'Winner'];
+  const headers = ['Question', 'Agent Score', 'Agent Failed', 'RAG Score', 'RAG Failed', 'Agent HitAll', 'RAG HitAll', 'Agent Tok', 'RAG Tok', 'Agent Lat/Active', 'RAG Lat/Active', 'Agent Wait', 'RAG Wait', 'Agent Steps/LLM/Fail', 'RAG Steps/LLM/Fail', 'Winner'];
   const compactMetrics = (latency: number, active: number | null | undefined): string => {
     const value = (item: number | null | undefined) => item === null || item === undefined ? 'n/a' : String(item);
     return `${latency}/${value(active)}`;
   };
   const rows = h2h.map((h) => [
     h.question_id,
-    h.agentic_score.toFixed(1),
-    h.rag_score.toFixed(1),
+    h.agentic_status === 'failed' ? `FAILED (${h.agentic_failure_reason ?? 'unknown'})` : h.agentic_score.toFixed(1),
+    h.agentic_status === 'failed' ? '1' : '0',
+    h.rag_status === 'failed' ? `FAILED (${h.rag_failure_reason ?? 'unknown'})` : h.rag_score.toFixed(1),
+    h.rag_status === 'failed' ? '1' : '0',
     h.agentic_hit_all ? 'yes' : 'no',
     h.rag_hit_all ? 'yes' : 'no',
     String(h.agentic_tokens),
@@ -478,6 +493,10 @@ export async function generateFailuresMarkdown(
     }
     md += `\n**System Answer**:\n${payload.answer || r.final_answer}\n\n`;
     md += `**Judge Verdict**: \`${r.judge_verdict}\`\n`;
+    if (r.status === 'failed') {
+      md += `**Failure Reason**: ${r.failure_reason ?? 'n/a'}\n`;
+      md += `**Last Error Class**: ${r.last_error_class ?? 'n/a'}\n`;
+    }
     md += `**Judge Reason**: ${r.judge_reason}\n\n`;
     md += `---\n\n`;
   }
@@ -490,7 +509,7 @@ export function exportRunsCsv(rows: RunDetailRow[]): string {
     'run_id', 'system', 'corpus', 'question_id', 'question_type', 'model', 'status',
     'repetition', 'total_tokens', 'cost_usd', 'latency_ms', 'active_latency_ms', 'rate_limit_wait_ms', 'rate_limit_count', 'llm_attempts', 'tool_call_failure_count', 'step_count', 'db_time_ms',
     'retrieval_hit_any', 'retrieval_hit_all', 'retrieval_recall', 'citation_correct',
-    'answer_score', 'judge_verdict', 'judge_reason', 'judge_tokens', 'judge_cost_usd'
+    'answer_score', 'failure_reason', 'last_error_class', 'judge_verdict', 'judge_reason', 'judge_tokens', 'judge_cost_usd'
   ];
 
   const lines = [headers.join(',')];
@@ -520,6 +539,8 @@ export function exportRunsCsv(rows: RunDetailRow[]): string {
       r.retrieval_recall,
       r.citation_correct,
       r.answer_score,
+      escapeCsv(r.failure_reason),
+      escapeCsv(r.last_error_class),
       escapeCsv(r.judge_verdict),
       escapeCsv(r.judge_reason),
       r.judge_tokens,
@@ -573,11 +594,13 @@ export function generateAsciiSummary(summaries: GroupSummary[], h2h: HeadToHeadR
     s.mean_tool_call_failure_count === null ? 'n/a' : String(s.mean_tool_call_failure_count)
   ]);
 
-  const h2hHeaders = ['Question', 'Agent Score', 'RAG Score', 'Agent HitAll', 'RAG HitAll', 'Agent Tok', 'RAG Tok', 'Agent Lat/Active', 'RAG Lat/Active', 'Agent Wait', 'RAG Wait', 'Agent Steps/LLM/Fail', 'RAG Steps/LLM/Fail', 'Winner'];
+  const h2hHeaders = ['Question', 'Agent Score', 'Agent Failed', 'RAG Score', 'RAG Failed', 'Agent HitAll', 'RAG HitAll', 'Agent Tok', 'RAG Tok', 'Agent Lat/Active', 'RAG Lat/Active', 'Agent Wait', 'RAG Wait', 'Agent Steps/LLM/Fail', 'RAG Steps/LLM/Fail', 'Winner'];
   const h2hRows = h2h.map((h) => [
     h.question_id,
-    h.agentic_score.toFixed(1),
-    h.rag_score.toFixed(1),
+    h.agentic_status === 'failed' ? 'FAILED' : h.agentic_score.toFixed(1),
+    h.agentic_status === 'failed' ? '1' : '0',
+    h.rag_status === 'failed' ? 'FAILED' : h.rag_score.toFixed(1),
+    h.rag_status === 'failed' ? '1' : '0',
     h.agentic_hit_all ? 'yes' : 'no',
     h.rag_hit_all ? 'yes' : 'no',
     String(h.agentic_tokens),

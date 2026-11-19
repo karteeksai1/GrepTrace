@@ -109,7 +109,8 @@ export class TraceLogger {
           attempt: failure.attempt,
           status: failure.status,
           wait_ms: failure.waitMs,
-          active_time_ms: failure.activeTimeMs
+          active_time_ms: failure.activeTimeMs,
+          error_body: failure.errorBody ?? failure.message
         },
         result_summary: failure.message,
         elapsed_ms: failure.activeTimeMs

@@ -12,7 +12,7 @@ const envSchema = z.object({
   JUDGE_MODEL: z.string().default('qwen/qwen3.8-27b'),
   EVAL_CONCURRENCY: z.coerce.number().int().positive().default(1),
   EVAL_REPETITIONS: z.coerce.number().int().positive().default(1),
-  EVAL_MIN_REQUEST_INTERVAL_MS: z.coerce.number().int().min(0).default(0),
+  EVAL_MIN_REQUEST_INTERVAL_MS: z.coerce.number().int().min(0).default(1500),
   EMBEDDING_PROVIDER: z.literal('pinecone', {
     errorMap: () => ({ message: 'EMBEDDING_PROVIDER must be "pinecone"' })
   }),

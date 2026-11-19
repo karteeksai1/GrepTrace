@@ -233,15 +233,17 @@ export const QuestionTable: React.FC<QuestionTableProps> = ({ batchId, questions
 
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-1.5">
-                        {getScoreBadge(q.agentic_score)}
-                        {getHitBadge(q.agentic_hit_all)}
+                        {q.agentic_status === 'failed' ? (
+                          <span title={q.agentic_failure_reason ?? 'Run failed'} className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">FAILED</span>
+                        ) : <>{getScoreBadge(q.agentic_score)}{getHitBadge(q.agentic_hit_all)}</>}
                       </div>
                     </td>
 
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-1.5">
-                        {getScoreBadge(q.rag_score)}
-                        {getHitBadge(q.rag_hit_all)}
+                        {q.rag_status === 'failed' ? (
+                          <span title={q.rag_failure_reason ?? 'Run failed'} className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">FAILED</span>
+                        ) : <>{getScoreBadge(q.rag_score)}{getHitBadge(q.rag_hit_all)}</>}
                       </div>
                     </td>
 

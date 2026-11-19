@@ -6,6 +6,7 @@ import {
   LLMClient,
   LLMRequest,
   LLMRequestError,
+  LLMRequestPacer,
   LLMResponse,
   ToolCall
 } from './types.js';
@@ -15,6 +16,8 @@ export interface OpenAIOptions {
   baseUrl?: string;
   defaultModel?: string;
   maxRetries?: number;
+  rateLimitMaxWaitMs?: number;
+  requestPacer?: LLMRequestPacer;
 }
 
 function delay(ms: number): Promise<void> {
@@ -26,6 +29,8 @@ export class OpenAIClient implements LLMClient {
   private baseUrl: string;
   private defaultModel: string;
   private maxRetries: number;
+  private rateLimitMaxWaitMs: number;
+  private requestPacer?: LLMRequestPacer;
 
   constructor(options: OpenAIOptions = {}) {
     this.apiKey = options.apiKey ?? process.env.LLM_API_KEY ?? process.env.OPENAI_API_KEY ?? process.env.GROQ_API_KEY ?? '';
@@ -33,6 +38,9 @@ export class OpenAIClient implements LLMClient {
     this.defaultModel = options.defaultModel ?? process.env.LLM_MODEL ?? 'gpt-4o-mini';
     const configuredRetries = Number.parseInt(process.env.LLM_MAX_RETRIES ?? '', 10);
     this.maxRetries = options.maxRetries ?? (Number.isFinite(configuredRetries) && configuredRetries >= 0 ? configuredRetries : 3);
+    const configuredWait = Number.parseInt(process.env.LLM_RATE_LIMIT_MAX_WAIT_MS ?? '', 10);
+    this.rateLimitMaxWaitMs = options.rateLimitMaxWaitMs ?? (Number.isFinite(configuredWait) && configuredWait >= 0 ? configuredWait : 600000);
+    this.requestPacer = options.requestPacer;
   }
 
   getDefaultModel(): string {
@@ -86,12 +94,16 @@ export class OpenAIClient implements LLMClient {
     });
   }
 
-  private extractRetryDelayMs(response: Response, errorText: string): number {
+  private extractRetryDelayMs(response: Response, errorText: string, retryNumber: number): number {
     const retryHeader = response.headers.get('retry-after');
     if (retryHeader) {
       const parsedSeconds = parseFloat(retryHeader);
       if (!isNaN(parsedSeconds)) {
         return Math.ceil(parsedSeconds * 1000);
+      }
+      const retryAt = Date.parse(retryHeader);
+      if (Number.isFinite(retryAt)) {
+        return Math.max(0, retryAt - Date.now());
       }
     }
     const match = errorText.match(/try again in ([0-9.]+)s/i);
@@ -101,7 +113,8 @@ export class OpenAIClient implements LLMClient {
         return Math.ceil(seconds * 1000) + 500;
       }
     }
-    return 3000;
+    const base = 1000 * Math.pow(2, Math.max(0, retryNumber - 1));
+    return Math.floor(base * (0.5 + Math.random() * 0.5));
   }
 
   private classifyFailure(status: number, errorText: string): LLMAttemptReason {
@@ -119,9 +132,44 @@ export class OpenAIClient implements LLMClient {
     errorText: string,
     attempt: number
   ): number {
-    if (reason === 'rate_limited') return this.extractRetryDelayMs(response, errorText);
-    if (reason === 'transient_server') return 1000 * Math.pow(2, Math.max(0, attempt - 1));
+    if (reason === 'rate_limited') return this.extractRetryDelayMs(response, errorText, attempt);
+    if (reason === 'transient_server') {
+      const base = 1000 * Math.pow(2, Math.max(0, attempt - 1));
+      return Math.floor(base * (0.5 + Math.random() * 0.5));
+    }
     return 0;
+  }
+
+  private truncateErrorBody(value: string): string {
+    return value.replace(/\s+/g, ' ').trim().slice(0, 500);
+  }
+
+  private createError(
+    status: number,
+    reason: LLMAttemptReason,
+    message: string,
+    attempt: number,
+    activeTimeMs: number,
+    waitTimeMs: number,
+    rateLimitCount: number,
+    toolCallFailureCount: number,
+    failedAttempts: LLMAttemptFailure[]
+  ): LLMRequestError {
+    const errorBody = this.truncateErrorBody(message);
+    return new LLMRequestError(
+      `LLM API error (${status}, ${reason}): ${errorBody}`,
+      {
+        attempts: attempt,
+        activeTimeMs,
+        waitTimeMs,
+        rateLimitCount,
+        toolCallFailureCount,
+        failedAttempts,
+        lastErrorClass: reason,
+        failureReason: errorBody || `llm_${reason}`,
+        errorBody
+      }
+    );
   }
 
   async chat(request: LLMRequest): Promise<LLMResponse> {
@@ -150,52 +198,68 @@ export class OpenAIClient implements LLMClient {
     let rateLimitCount = 0;
     let toolCallFailureCount = 0;
     const failedAttempts: LLMAttemptFailure[] = [];
-    const maxAttempts = this.maxRetries + 1;
+    let toolFailureRetries = 0;
+    let transientRetries = 0;
 
-    while (attempt < maxAttempts) {
+    while (true) {
       attempt++;
+      await this.requestPacer?.waitForSlot();
       const activeStart = Date.now();
-      const response = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.apiKey}`
-        },
-        body: JSON.stringify(body)
-      });
+      let response: Response;
+      let networkError: Error | null = null;
+      try {
+        response = await fetch(`${this.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.apiKey}`
+          },
+          body: JSON.stringify(body)
+        });
+      } catch (error) {
+        networkError = error as Error;
+        response = new Response(networkError.message, { status: 599 });
+      }
       const attemptActiveTimeMs = Date.now() - activeStart;
       activeTimeMs += attemptActiveTimeMs;
 
       if (!response.ok) {
-        const errorText = await response.text();
-        const reason = this.classifyFailure(response.status, errorText);
-        const waitMs = attempt < maxAttempts ? this.getWaitMs(reason, response, errorText, attempt) : 0;
+        const errorText = networkError ? networkError.message : await response.text();
+        const reason = networkError ? 'transient_server' : this.classifyFailure(response.status, errorText);
+        const retryAllowed = reason === 'rate_limited'
+          ? waitTimeMs < this.rateLimitMaxWaitMs
+          : reason === 'tool_call_failed'
+            ? toolFailureRetries < this.maxRetries
+            : reason === 'transient_server'
+              ? transientRetries < 3
+              : false;
+        let waitMs = retryAllowed ? this.getWaitMs(reason, response, errorText, reason === 'tool_call_failed' ? toolFailureRetries + 1 : attempt) : 0;
+        if (reason === 'rate_limited') {
+          waitMs = Math.min(waitMs, Math.max(0, this.rateLimitMaxWaitMs - waitTimeMs));
+        }
         if (reason === 'rate_limited') rateLimitCount++;
         if (reason === 'tool_call_failed') toolCallFailureCount++;
+        if (reason === 'tool_call_failed') toolFailureRetries++;
+        if (reason === 'transient_server') transientRetries++;
+        const errorBody = this.truncateErrorBody(errorText);
         failedAttempts.push({
           attempt,
           reason,
           status: response.status,
-          message: errorText,
+          message: errorBody,
+          errorBody,
           waitMs,
           activeTimeMs: attemptActiveTimeMs
         });
-        if (waitMs > 0 && attempt < maxAttempts) {
+        if (retryAllowed && waitMs > 0) {
           waitTimeMs += waitMs;
           await delay(waitMs);
         }
-        if (attempt < maxAttempts && reason !== 'other_error') continue;
-        throw new LLMRequestError(
-          `LLM API error (${response.status}): ${errorText}`,
-          {
-            attempts: attempt,
-            activeTimeMs,
-            waitTimeMs,
-            rateLimitCount,
-            toolCallFailureCount,
-            failedAttempts
-          }
-        );
+        if (retryAllowed && (waitMs > 0 || reason === 'tool_call_failed' || reason === 'rate_limited')) continue;
+        const failureReason = reason === 'rate_limited' && waitTimeMs >= this.rateLimitMaxWaitMs
+          ? 'rate_limit_wait_cap_exceeded'
+          : reason;
+        throw this.createError(response.status, reason, `${failureReason}: ${errorBody}`, attempt, activeTimeMs, waitTimeMs, rateLimitCount, toolCallFailureCount, failedAttempts);
       }
 
       const data = await response.json();
@@ -224,13 +288,5 @@ export class OpenAIClient implements LLMClient {
       };
     }
 
-    throw new LLMRequestError('LLM request failed after retries.', {
-      attempts: attempt,
-      activeTimeMs,
-      waitTimeMs,
-      rateLimitCount,
-      toolCallFailureCount,
-      failedAttempts
-    });
   }
 }

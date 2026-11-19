@@ -5,6 +5,7 @@ import {
   computeJudgeAgreement,
   escapeCsv,
   formatAsciiTable,
+  formatHeadToHeadMarkdown,
   mean,
   median,
   p95,
@@ -164,6 +165,16 @@ describe('Eval Reporter Aggregations', () => {
     expect(h2h).toHaveLength(1);
     expect(h2h[0].question_id).toBe('q1');
     expect(h2h[0].winner).toBe('agentic');
+  });
+
+  it('surfaces failed run reasons beside scores', () => {
+    const rows = [
+      { run_id: 'a', system: 'agentic', status: 'failed', question_id: 'q', corpus: 'express', question_type: 'conceptual', answer_score: 0, retrieval_hit_all: false, total_tokens: 0, cost_usd: 0, latency_ms: 0, step_count: 0, db_time_ms: 0, retrieval_hit_any: false, retrieval_recall: 0, citation_correct: false, judge_verdict: 'none', judge_reason: '', judge_tokens: 0, judge_cost_usd: 0, final_answer: '', failure_reason: 'rate_limit_wait_cap_exceeded', last_error_class: 'rate_limited' },
+      { run_id: 'r', system: 'rag', status: 'completed', question_id: 'q', corpus: 'express', question_type: 'conceptual', answer_score: 1, retrieval_hit_all: true, total_tokens: 1, cost_usd: 0, latency_ms: 1, step_count: 1, db_time_ms: 0, retrieval_hit_any: true, retrieval_recall: 1, citation_correct: true, judge_verdict: 'correct', judge_reason: '', judge_tokens: 0, judge_cost_usd: 0, final_answer: '' }
+    ] as RunDetailRow[];
+    const report = formatHeadToHeadMarkdown(buildHeadToHead(rows));
+    expect(report).toContain('FAILED (rate_limit_wait_cap_exceeded)');
+    expect(report).toContain('Agent Failed');
   });
 
   it('computes human-judge agreement rate and confusion matrix', () => {

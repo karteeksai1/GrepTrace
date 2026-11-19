@@ -263,6 +263,9 @@ export async function runRagPipeline(options: RagRunOptions): Promise<RagRunResu
           rate_limit_count: err.rateLimitCount,
           rate_limit_wait_ms: err.waitTimeMs,
           tool_call_failure_count: err.toolCallFailureCount
+          , last_error_class: err.lastErrorClass,
+          failure_reason: err.failureReason,
+          error_body: err.errorBody
         },
         result_summary: err.message,
         elapsed_ms: err.activeTimeMs
@@ -272,7 +275,11 @@ export async function runRagPipeline(options: RagRunOptions): Promise<RagRunResu
     await logger.logEvent({
       step,
       type: 'error',
-      result_summary: errMsg
+      args: {
+        last_error_class: err instanceof LLMRequestError ? err.lastErrorClass : 'other_error',
+        failure_reason: err instanceof LLMRequestError ? err.failureReason : 'unclassified_error'
+      },
+      result_summary: errMsg.slice(0, 500)
     });
 
     await logger.finishRun({

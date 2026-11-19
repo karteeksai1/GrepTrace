@@ -14,6 +14,7 @@ import { FileMap } from '../components/FileMap.js';
 import { RagReplayView } from '../components/RagReplayView.js';
 import { CodePanel } from '../components/CodePanel.js';
 import { parseRunAnswer } from '../utils/highlight.js';
+import { deriveRunTimingMetrics } from '../utils/metrics.js';
 
 export const ReplayPage: React.FC = () => {
   const { runId } = useParams<{ runId: string }>();
@@ -119,6 +120,7 @@ export const ReplayPage: React.FC = () => {
   }
 
   const { run } = runDetail;
+  const replayMetrics = deriveRunTimingMetrics(events, run);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
@@ -156,6 +158,11 @@ export const ReplayPage: React.FC = () => {
           <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100">
             {questionText}
           </h1>
+          {run.status === 'failed' && (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">
+              <span className="font-semibold">Failure:</span> {replayMetrics.lastErrorClass ?? 'unknown'} — {replayMetrics.failureReason ?? 'n/a'}
+            </div>
+          )}
         </div>
       </div>
 

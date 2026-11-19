@@ -185,14 +185,12 @@ export async function executeSingleBenchmarkItem(
   maxSteps: number,
   pacer: Pacer
 ): Promise<{ run: Run; score: ScoreRecord }> {
-  await pacer.waitForSlot();
-
   const logger = new TraceLogger(pool);
   const corpusSpec = corporaConfig.corpora[item.corpus];
   const corpusRoot = path.resolve(rootDir, corpusSpec.path);
 
-  const llmClient = createLLMClient(undefined, item.model);
-  const judgeClient = createLLMClient(undefined, env.JUDGE_MODEL);
+  const llmClient = createLLMClient(undefined, item.model, pacer);
+  const judgeClient = createLLMClient(undefined, env.JUDGE_MODEL, pacer);
 
   let finalAnswer: string | null = null;
   let status: 'completed' | 'failed' = 'failed';

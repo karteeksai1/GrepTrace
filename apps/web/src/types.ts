@@ -82,6 +82,10 @@ export interface QuestionRow {
   rag_llm_attempts?: number | null;
   agentic_tool_call_failure_count?: number | null;
   rag_tool_call_failure_count?: number | null;
+  agentic_status?: string;
+  rag_status?: string;
+  agentic_failure_reason?: string | null;
+  rag_failure_reason?: string | null;
   winner: 'agentic' | 'rag' | 'tie';
 }
 

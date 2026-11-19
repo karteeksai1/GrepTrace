@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Pacer } from '../packages/eval/src/runner/batch-runner.js';
 
 describe('Eval Pacer', () => {
@@ -12,11 +12,16 @@ describe('Eval Pacer', () => {
   });
 
   it('delays subsequent requests to enforce minimum interval', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
     const pacer = new Pacer(60);
-    const start = Date.now();
     await pacer.waitForSlot();
-    await pacer.waitForSlot();
-    const elapsed = Date.now() - start;
-    expect(elapsed).toBeGreaterThanOrEqual(50);
+    const next = pacer.waitForSlot();
+    await vi.advanceTimersByTimeAsync(59);
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await next;
+    expect(Date.now()).toBe(1060);
+    vi.useRealTimers();
   });
 });

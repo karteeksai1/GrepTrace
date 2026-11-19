@@ -12,6 +12,8 @@ export interface RunTimingMetrics {
   neonFetchMs: number | null;
   answerGenerationMs: number | null;
   otherLatencyMs: number | null;
+  failureReason: string | null;
+  lastErrorClass: string | null;
 }
 
 function numeric(value: unknown): number | null {
@@ -29,6 +31,18 @@ export function deriveRunTimingMetrics(events: RunEvent[], run?: RunRecord): Run
   const failures = events.filter((event) => event.type === 'llm_attempt_failed');
   const modelTurns = events.filter((event) => event.type === 'model_turn');
   const failedCalls = events.filter((event) => event.type === 'llm_call_failed');
+  const errorEvent = [...events].reverse().find((event) => event.type === 'error');
+  const failureEvent = failedCalls[failedCalls.length - 1];
+  const failureReason = typeof failureEvent?.args?.failure_reason === 'string'
+    ? failureEvent.args.failure_reason
+    : typeof errorEvent?.args?.failure_reason === 'string'
+      ? errorEvent.args.failure_reason
+      : errorEvent?.result_summary ?? null;
+  const lastErrorClass = typeof failureEvent?.args?.last_error_class === 'string'
+    ? failureEvent.args.last_error_class
+    : typeof errorEvent?.args?.last_error_class === 'string'
+      ? errorEvent.args.last_error_class
+      : null;
   const hasAttemptMetadata = failures.length > 0 || failedCalls.length > 0 || modelTurns.some((event) => event.args && 'llm_attempts' in event.args);
   const rateLimitWaitMs = hasAttemptMetadata
     ? failures.reduce((total, event) => total + (numeric(event.args?.wait_ms) ?? 0), 0)
@@ -69,6 +83,8 @@ export function deriveRunTimingMetrics(events: RunEvent[], run?: RunRecord): Run
     pineconeQueryMs,
     neonFetchMs,
     answerGenerationMs,
-    otherLatencyMs
+    otherLatencyMs,
+    failureReason,
+    lastErrorClass
   };
 }

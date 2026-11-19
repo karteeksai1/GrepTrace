@@ -51,6 +51,13 @@ export const CompareColumn: React.FC<CompareColumnProps> = ({
   const displayMetric = (value: number | null | undefined, suffix = '') => value === null || value === undefined ? 'n/a' : `${value}${suffix}`;
 
   const getVerdictBadge = () => {
+    if (run.status === 'failed') {
+      return (
+        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300">
+          FAILED
+        </span>
+      );
+    }
     if (!score) return null;
     const v = score.judge_verdict;
     if (v === 'correct') {
@@ -86,6 +93,12 @@ export const CompareColumn: React.FC<CompareColumnProps> = ({
         </div>
 
         <div className="p-4 bg-slate-50 dark:bg-slate-800/40 border-b border-slate-200 dark:border-slate-800">
+          {run.status === 'failed' && (
+            <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">
+              <div className="font-bold">Run failed: {metrics.lastErrorClass ?? 'unknown error'}</div>
+              <div className="mt-1 break-words">{metrics.failureReason ?? 'No failure reason recorded.'}</div>
+            </div>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
             <div>
               <span className="text-slate-500 dark:text-slate-400 block">Steps</span>

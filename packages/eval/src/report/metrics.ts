@@ -3,6 +3,7 @@ export interface EventMetricInput {
   elapsed_ms?: number | null;
   db_time_ms?: number | null;
   args?: Record<string, unknown> | null;
+  result_summary?: string | null;
 }
 
 export interface RunTimingMetrics {
@@ -18,6 +19,8 @@ export interface RunTimingMetrics {
   neon_fetch_ms: number | null;
   answer_generation_ms: number | null;
   other_latency_ms: number | null;
+  failure_reason: string | null;
+  last_error_class: string | null;
 }
 
 function numeric(value: unknown): number | null {
@@ -50,6 +53,18 @@ export function deriveRunTimingMetrics(
   const failedAttempts = events.filter((event) => event.type === 'llm_attempt_failed');
   const modelTurns = events.filter((event) => event.type === 'model_turn');
   const failedCalls = events.filter((event) => event.type === 'llm_call_failed');
+  const errorEvent = [...events].reverse().find((event) => event.type === 'error');
+  const failureEvent = failedCalls[failedCalls.length - 1];
+  const failureReason = typeof failureEvent?.args?.failure_reason === 'string'
+    ? failureEvent.args.failure_reason
+    : typeof errorEvent?.args?.failure_reason === 'string'
+      ? errorEvent.args.failure_reason
+      : errorEvent?.result_summary ?? null;
+  const lastErrorClass = typeof failureEvent?.args?.last_error_class === 'string'
+    ? failureEvent.args.last_error_class
+    : typeof errorEvent?.args?.last_error_class === 'string'
+      ? errorEvent.args.last_error_class
+      : null;
   const hasAttemptMetadata = failedAttempts.length > 0 || failedCalls.length > 0 || modelTurns.some((event) => {
     return event.args && Object.prototype.hasOwnProperty.call(event.args, 'llm_attempts');
   });
@@ -99,6 +114,8 @@ export function deriveRunTimingMetrics(
     pinecone_query_ms: pineconeQueryMs,
     neon_fetch_ms: neonFetchMs,
     answer_generation_ms: answerGenerationMs,
-    other_latency_ms: otherLatencyMs
+    other_latency_ms: otherLatencyMs,
+    failure_reason: failureReason,
+    last_error_class: lastErrorClass
   };
 }

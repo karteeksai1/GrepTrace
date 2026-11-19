@@ -32,6 +32,10 @@ export interface LLMRequest {
   maxTokens?: number;
 }
 
+export interface LLMRequestPacer {
+  waitForSlot(): Promise<void>;
+}
+
 export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;
@@ -62,6 +66,7 @@ export interface LLMAttemptFailure {
   reason: LLMAttemptReason;
   status: number;
   message: string;
+  errorBody?: string;
   waitMs: number;
   activeTimeMs: number;
 }
@@ -73,6 +78,9 @@ export class LLMRequestError extends Error {
   readonly rateLimitCount: number;
   readonly toolCallFailureCount: number;
   readonly failedAttempts: LLMAttemptFailure[];
+  readonly lastErrorClass: LLMAttemptReason;
+  readonly failureReason: string;
+  readonly errorBody: string;
 
   constructor(message: string, details: {
     attempts: number;
@@ -81,6 +89,9 @@ export class LLMRequestError extends Error {
     rateLimitCount: number;
     toolCallFailureCount: number;
     failedAttempts: LLMAttemptFailure[];
+    lastErrorClass: LLMAttemptReason;
+    failureReason: string;
+    errorBody: string;
   }) {
     super(message);
     this.name = 'LLMRequestError';
@@ -90,6 +101,9 @@ export class LLMRequestError extends Error {
     this.rateLimitCount = details.rateLimitCount;
     this.toolCallFailureCount = details.toolCallFailureCount;
     this.failedAttempts = details.failedAttempts;
+    this.lastErrorClass = details.lastErrorClass;
+    this.failureReason = details.failureReason;
+    this.errorBody = details.errorBody;
   }
 }
 
