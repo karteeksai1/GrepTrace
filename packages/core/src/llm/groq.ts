@@ -11,7 +11,7 @@ import {
   ToolCall
 } from './types.js';
 
-export interface OpenAIOptions {
+export interface GroqOptions {
   apiKey?: string;
   baseUrl?: string;
   defaultModel?: string;
@@ -24,7 +24,7 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export class OpenAIClient implements LLMClient {
+export class GroqClient implements LLMClient {
   private apiKey: string;
   private baseUrl: string;
   private defaultModel: string;
@@ -32,10 +32,10 @@ export class OpenAIClient implements LLMClient {
   private rateLimitMaxWaitMs: number;
   private requestPacer?: LLMRequestPacer;
 
-  constructor(options: OpenAIOptions = {}) {
-    this.apiKey = options.apiKey ?? process.env.LLM_API_KEY ?? process.env.OPENAI_API_KEY ?? process.env.GROQ_API_KEY ?? '';
-    this.baseUrl = (options.baseUrl ?? process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
-    this.defaultModel = options.defaultModel ?? process.env.LLM_MODEL ?? 'gpt-4o-mini';
+  constructor(options: GroqOptions = {}) {
+    this.apiKey = options.apiKey ?? process.env.LLM_API_KEY ?? '';
+    this.baseUrl = (options.baseUrl ?? process.env.GROQ_BASE_URL ?? 'https://api.groq.com/openai/v1').replace(/\/+$/, '');
+    this.defaultModel = options.defaultModel ?? process.env.LLM_MODEL ?? 'openai/gpt-oss-120b';
     const configuredRetries = Number.parseInt(process.env.LLM_MAX_RETRIES ?? '', 10);
     this.maxRetries = options.maxRetries ?? (Number.isFinite(configuredRetries) && configuredRetries >= 0 ? configuredRetries : 3);
     const configuredWait = Number.parseInt(process.env.LLM_RATE_LIMIT_MAX_WAIT_MS ?? '', 10);

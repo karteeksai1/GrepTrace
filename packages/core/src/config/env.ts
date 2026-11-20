@@ -4,7 +4,7 @@ import { z } from 'zod';
 dotenv.config();
 
 const envSchema = z.object({
-  GROQ_API_KEY: z.string().min(1, 'GROQ_API_KEY is required'),
+  LLM_API_KEY: z.string().min(1, 'LLM_API_KEY is required'),
   LLM_PROVIDER: z.literal('groq', {
     errorMap: () => ({ message: 'LLM_PROVIDER must be "groq"' })
   }),
@@ -36,11 +36,7 @@ const envSchema = z.object({
 export type EnvConfig = z.infer<typeof envSchema>;
 
 export function getRawEnv(): Record<string, string | undefined> {
-  const env = { ...process.env };
-  if (!env.GROQ_API_KEY && env.LLM_API_KEY) {
-    env.GROQ_API_KEY = env.LLM_API_KEY;
-  }
-  return env;
+  return { ...process.env };
 }
 
 export function validateEnv(customEnv?: Record<string, string | undefined>): EnvConfig {

@@ -11,22 +11,6 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
   'openai/gpt-oss-20b': {
     promptCostPerMillion: 0.075,
     completionCostPerMillion: 0.30
-  },
-  'gpt-4o': {
-    promptCostPerMillion: 2.50,
-    completionCostPerMillion: 10.00
-  },
-  'gpt-4o-mini': {
-    promptCostPerMillion: 0.15,
-    completionCostPerMillion: 0.60
-  },
-  'claude-3-5-sonnet-20241022': {
-    promptCostPerMillion: 3.00,
-    completionCostPerMillion: 15.00
-  },
-  'claude-3-5-haiku-20241022': {
-    promptCostPerMillion: 0.80,
-    completionCostPerMillion: 4.00
   }
 };
 

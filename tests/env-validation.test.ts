@@ -3,7 +3,7 @@ import { validateEnv } from '@greptrace/core';
 
 describe('Environment Variable Validation', () => {
   const validMockEnv = {
-    GROQ_API_KEY: 'gsk_mock_groq_key',
+    LLM_API_KEY: 'gsk_mock_groq_key',
     LLM_PROVIDER: 'groq',
     LLM_MODEL: 'openai/gpt-oss-120b',
     EMBEDDING_PROVIDER: 'pinecone',

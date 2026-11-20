@@ -4,7 +4,6 @@ import { getAppDatabaseUrl, createPool, warmUpDatabase } from './client.js';
 export interface HealthReport {
   connected: boolean;
   warmupMs: number;
-  vectorExtension: boolean;
   tables: string[];
 }
 
@@ -17,11 +16,6 @@ export async function checkDatabaseHealth(): Promise<HealthReport> {
     const client = await pool.connect();
 
     try {
-      const extRes = await client.query(
-        "SELECT extname FROM pg_extension WHERE extname = 'vector'"
-      );
-      const vectorExtension = extRes.rows.length > 0;
-
       const tablesRes = await client.query(
         "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
       );
@@ -30,7 +24,6 @@ export async function checkDatabaseHealth(): Promise<HealthReport> {
       return {
         connected: true,
         warmupMs,
-        vectorExtension,
         tables
       };
     } finally {
@@ -47,7 +40,6 @@ if (process.argv[1]?.endsWith('health.ts') || process.argv[1]?.endsWith('health.
       process.stdout.write(`Database health check passed:\n`);
       process.stdout.write(`- Connected: ${report.connected}\n`);
       process.stdout.write(`- Warmup latency: ${report.warmupMs}ms\n`);
-      process.stdout.write(`- Vector extension installed: ${report.vectorExtension}\n`);
       process.stdout.write(`- Tables: ${report.tables.join(', ') || 'none'}\n`);
       process.exit(0);
     })

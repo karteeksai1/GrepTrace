@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { LLMRequestError, OpenAIClient } from '@greptrace/core';
+import { LLMRequestError, GroqClient } from '@greptrace/core';
 
 function successResponse() {
   return new Response(JSON.stringify({
@@ -17,7 +17,7 @@ describe('LLM attempt measurement', () => {
       }))
       .mockResolvedValueOnce(successResponse());
 
-    const client = new OpenAIClient({ baseUrl: 'https://groq.test', maxRetries: 1 });
+    const client = new GroqClient({ baseUrl: 'https://groq.test', maxRetries: 1 });
     const response = await client.chat({ messages: [{ role: 'user', content: 'hello' }] });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -34,7 +34,7 @@ describe('LLM attempt measurement', () => {
       .mockResolvedValueOnce(new Response('{"error":{"code":"tool_use_failed"}}', { status: 400 }))
       .mockResolvedValueOnce(successResponse());
 
-    const client = new OpenAIClient({ baseUrl: 'https://groq.test', maxRetries: 2 });
+    const client = new GroqClient({ baseUrl: 'https://groq.test', maxRetries: 2 });
     const request = {
       messages: [{ role: 'user' as const, content: 'hello' }],
       tools: [{ name: 'grep', description: 'search', parameters: { type: 'object' as const, properties: {} } }]
@@ -54,7 +54,7 @@ describe('LLM attempt measurement', () => {
   it('stops after the configured retry limit', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
       .mockImplementation(async () => new Response('{"error":{"code":"tool_use_failed"}}', { status: 400 }));
-    const client = new OpenAIClient({ baseUrl: 'https://groq.test', maxRetries: 2 });
+    const client = new GroqClient({ baseUrl: 'https://groq.test', maxRetries: 2 });
 
     await expect(client.chat({ messages: [{ role: 'user', content: 'hello' }] }))
       .rejects.toBeInstanceOf(LLMRequestError);
@@ -66,7 +66,7 @@ describe('LLM attempt measurement', () => {
     const transientFetch = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response('{"error":{"message":"busy"}}', { status: 503 }))
       .mockResolvedValueOnce(successResponse());
-    const transientClient = new OpenAIClient({ baseUrl: 'https://groq.test', maxRetries: 1 });
+    const transientClient = new GroqClient({ baseUrl: 'https://groq.test', maxRetries: 1 });
     const transientResponse = await transientClient.chat({ messages: [{ role: 'user', content: 'hello' }] });
     expect(transientFetch).toHaveBeenCalledTimes(2);
     expect(transientResponse.failedAttempts?.[0]?.reason).toBe('transient_server');
@@ -74,7 +74,7 @@ describe('LLM attempt measurement', () => {
 
     const otherFetch = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{"error":{"message":"unauthorized"}}', { status: 401 }));
-    const otherClient = new OpenAIClient({ baseUrl: 'https://groq.test', maxRetries: 3 });
+    const otherClient = new GroqClient({ baseUrl: 'https://groq.test', maxRetries: 3 });
     const error = await otherClient.chat({ messages: [{ role: 'user', content: 'hello' }] }).catch((value) => value as LLMRequestError);
     expect(otherFetch).toHaveBeenCalledTimes(1);
     expect(error.failedAttempts[0].reason).toBe('other_error');
@@ -87,7 +87,7 @@ describe('LLM attempt measurement', () => {
       .mockResolvedValueOnce(new Response('limited', { status: 429, headers: { 'retry-after': '0' } }))
       .mockResolvedValueOnce(new Response('limited', { status: 429, headers: { 'retry-after': '0' } }))
       .mockResolvedValueOnce(successResponse());
-    const client = new OpenAIClient({ baseUrl: 'https://groq.test', maxRetries: 0 });
+    const client = new GroqClient({ baseUrl: 'https://groq.test', maxRetries: 0 });
     const response = await client.chat({ messages: [{ role: 'user', content: 'hello' }] });
     expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(response.rateLimitCount).toBe(3);
@@ -97,7 +97,7 @@ describe('LLM attempt measurement', () => {
   it('stops at the rate limit wait cap with a clear reason', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
       .mockImplementation(async () => new Response('limited', { status: 429, headers: { 'retry-after': '1' } }));
-    const client = new OpenAIClient({ baseUrl: 'https://groq.test', rateLimitMaxWaitMs: 10 });
+    const client = new GroqClient({ baseUrl: 'https://groq.test', rateLimitMaxWaitMs: 10 });
     const error = await client.chat({ messages: [{ role: 'user', content: 'hello' }] }).catch((value) => value as LLMRequestError);
     expect(error.message).toContain('rate_limit_wait_cap_exceeded');
     expect(error.waitTimeMs).toBe(10);
@@ -110,7 +110,7 @@ describe('LLM attempt measurement', () => {
       .mockResolvedValueOnce(new Response('limited', { status: 429, headers: { 'retry-after': '0.001' } }))
       .mockResolvedValueOnce(successResponse());
     const waitForSlot = vi.fn().mockResolvedValue(undefined);
-    const client = new OpenAIClient({ baseUrl: 'https://groq.test', requestPacer: { waitForSlot } });
+    const client = new GroqClient({ baseUrl: 'https://groq.test', requestPacer: { waitForSlot } });
     const response = await client.chat({ messages: [{ role: 'user', content: 'hello' }] });
     expect(response.waitTimeMs).toBe(1);
     expect(waitForSlot).toHaveBeenCalledTimes(2);
@@ -124,7 +124,7 @@ describe('LLM attempt measurement', () => {
         failed_generation: 'json({"answer":"Recovered","citations":[]})'
       }
     }), { status: 400 }));
-    const client = new OpenAIClient({ baseUrl: 'https://groq.test', maxRetries: 3 });
+    const client = new GroqClient({ baseUrl: 'https://groq.test', maxRetries: 3 });
 
     const response = await client.chat({ messages: [{ role: 'user', content: 'hello' }], tools: [{ name: 'grep', description: 'search', parameters: { type: 'object', properties: {} } }] });
 
@@ -135,7 +135,7 @@ describe('LLM attempt measurement', () => {
 
   it('does not retry a daily token quota error', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('tokens per day (TPD) limit reached', { status: 429 }));
-    const client = new OpenAIClient({ baseUrl: 'https://groq.test', maxRetries: 3 });
+    const client = new GroqClient({ baseUrl: 'https://groq.test', maxRetries: 3 });
 
     const error = await client.chat({ messages: [{ role: 'user', content: 'hello' }] }).catch((value) => value as LLMRequestError);
 

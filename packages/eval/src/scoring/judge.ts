@@ -116,7 +116,7 @@ export async function judgeAnswer(
     citations
   );
 
-  const messages = [
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
     { role: 'system' as const, content: systemPrompt },
     { role: 'user' as const, content: userPrompt }
   ];
