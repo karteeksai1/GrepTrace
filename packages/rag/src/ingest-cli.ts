@@ -120,6 +120,7 @@ export async function main(): Promise<void> {
     process.stdout.write(`Oversized single lines split: ${summary.oversizedLineCount}\n`);
     process.stdout.write(`Newly ingested: ${summary.ingestedChunks}\n`);
     process.stdout.write(`Tokens used: ${summary.totalTokens}\n`);
+    process.stdout.write(`Billed/estimated token ratio: ${summary.billedTokenRatio.toFixed(3)}\n`);
     process.stdout.write(`Truncated inputs: ${summary.truncatedInputs} (${summary.truncatedPercentage.toFixed(2)}%)\n`);
     process.stdout.write(`Pruned chunks: ${summary.prunedChunks}\n`);
     if (summary.verified) {

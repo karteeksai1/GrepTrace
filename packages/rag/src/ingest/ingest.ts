@@ -40,6 +40,7 @@ export interface IngestSummary {
   maxChunkTokens: number;
   medianChunkTokens: number;
   oversizedLineCount: number;
+  billedTokenRatio: number;
   prunedChunks: number;
   verified?: VerifySummary;
 }
@@ -262,13 +263,10 @@ export async function ingestCorpus(options: IngestOptions): Promise<IngestSummar
     maxChunkTokens: plan.maxChunkTokens,
     medianChunkTokens: plan.medianChunkTokens,
     oversizedLineCount: scanned.oversizedLineCount,
+    billedTokenRatio: 0,
     prunedChunks
   });
   if (options.dryRun) {
-    if (options.prune) {
-      const ingestion = await getCorpusIngestion(options.pool, options.corpus);
-      process.stdout.write(`Recorded ingestion commit: ${ingestion?.commit_hash ?? 'none'}\n`);
-    }
     return emptySummary();
   }
   const vectorStore = options.vectorStore ?? createPineconeVectorStore(options.pineconeApiKey, options.pineconeIndexName, options.pineconeNamespace);
@@ -320,5 +318,10 @@ export async function ingestCorpus(options: IngestOptions): Promise<IngestSummar
     process.stdout.write(`Progress: ${ingestedCount} / ${plan.newChunks.length} chunks ingested...\n`);
   }
   await recordSuccessfulIngestion(options, plan);
-  return { ...emptySummary(prunedChunks), ingestedChunks: ingestedCount, totalTokens: accumulatedTokens };
+  const summary = { ...emptySummary(prunedChunks), ingestedChunks: ingestedCount, totalTokens: accumulatedTokens, billedTokenRatio: plan.estimatedTokens === 0 ? 0 : accumulatedTokens / plan.estimatedTokens };
+  if (summary.billedTokenRatio > 1.15) {
+    const suggested = Math.floor((options.chunkMaxTokens ?? 400) / summary.billedTokenRatio / 10) * 10;
+    process.stdout.write(`Warning: billed tokens are ${summary.billedTokenRatio.toFixed(3)}x the estimate. Suggested CHUNK_MAX_TOKENS=${suggested}.\n`);
+  }
+  return summary;
 }
