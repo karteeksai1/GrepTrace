@@ -3,6 +3,7 @@ export type EmbeddingInputType = 'passage' | 'query';
 export interface EmbeddingResult {
   embeddings: number[][];
   totalTokens?: number;
+  truncatedCount?: number;
 }
 
 export interface EmbeddingClient {

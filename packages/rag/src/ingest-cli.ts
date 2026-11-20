@@ -92,6 +92,8 @@ export async function main(): Promise<void> {
       corpusRoot,
       commitHash,
       embeddingModel: env.EMBEDDING_MODEL,
+      chunkMaxTokens: env.CHUNK_MAX_TOKENS,
+      chunkOverlapLines: env.CHUNK_OVERLAP_LINES,
       pool,
       embeddingClient,
       pineconeApiKey: env.PINECONE_API_KEY,
@@ -112,6 +114,10 @@ export async function main(): Promise<void> {
     process.stdout.write(`To ingest: ${summary.newChunks}\n`);
     process.stdout.write(`Stale: ${summary.staleChunks}\n`);
     process.stdout.write(`Estimated tokens: ${summary.estimatedTokens}\n`);
+    process.stdout.write(`Max chunk tokens: ${summary.maxChunkTokens}\n`);
+    process.stdout.write(`Median chunk tokens: ${summary.medianChunkTokens}\n`);
+    process.stdout.write(`Over embedding limit: ${summary.truncatedInputs}\n`);
+    process.stdout.write(`Oversized single lines split: ${summary.oversizedLineCount}\n`);
     process.stdout.write(`Newly ingested: ${summary.ingestedChunks}\n`);
     process.stdout.write(`Tokens used: ${summary.totalTokens}\n`);
     process.stdout.write(`Truncated inputs: ${summary.truncatedInputs} (${summary.truncatedPercentage.toFixed(2)}%)\n`);

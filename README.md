@@ -19,6 +19,8 @@ Copy `.env.example` to `.env` and set the credentials and endpoints for the loca
 - `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `PINECONE_CLOUD`, `PINECONE_REGION`, and `PINECONE_METRIC`: Pinecone connection and index configuration.
 - `PINECONE_NAMESPACE_EXPRESS` and `PINECONE_NAMESPACE_FASTAPI`: corpus namespaces.
 - `RAG_TOP_K`: number of retrieved chunks.
+- `CHUNK_MAX_TOKENS`: maximum estimated embedding input size; the default 400 leaves room under multilingual-e5-large's 512-token limit.
+- `CHUNK_OVERLAP_LINES`: lines shared between adjacent split chunks; the default is 5.
 - `DATABASE_URL`: pooled application database URL.
 - `DATABASE_URL_DIRECT`: direct migration database URL.
 - `PORT`: API server port.

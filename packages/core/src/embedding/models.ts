@@ -53,16 +53,19 @@ export function prepareInputTexts(
   texts: string[],
   maxTokens: number
 ): { prepared: string[]; truncatedCount: number } {
-  const maxChars = maxTokens * 4;
   let truncatedCount = 0;
 
   const prepared = texts.map((text) => {
-    if (text.length > maxChars) {
+    if (estimateEmbeddingTokens(text) > maxTokens) {
       truncatedCount++;
-      return text.slice(0, maxChars);
+      return text.slice(0, maxTokens * 4);
     }
     return text;
   });
 
   return { prepared, truncatedCount };
+}
+
+export function estimateEmbeddingTokens(text: string): number {
+  return Math.ceil(text.length / 4);
 }

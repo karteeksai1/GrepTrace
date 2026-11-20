@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { chunkFile } from '../chunking/chunker.js';
+import { chunkFile, chunkFileWithSummary, ChunkingOptions } from '../chunking/chunker.js';
 import { CodeChunk } from '../chunking/types.js';
 
 const ALLOWED_EXTENSIONS = new Set(['.js', '.ts', '.mjs', '.cjs', '.py']);
@@ -31,7 +31,8 @@ async function walkDir(dir: string, baseDir: string): Promise<string[]> {
 
 export async function scanAndChunkCorpus(
   corpusName: string,
-  corpusRoot: string
+  corpusRoot: string,
+  options?: ChunkingOptions
 ): Promise<CodeChunk[]> {
   const relFiles = await walkDir(corpusRoot, corpusRoot);
   const allChunks: CodeChunk[] = [];
@@ -39,9 +40,26 @@ export async function scanAndChunkCorpus(
   for (const relFile of relFiles) {
     const fullPath = path.join(corpusRoot, relFile);
     const content = await fs.readFile(fullPath, 'utf8');
-    const chunks = chunkFile(corpusName, relFile, content);
+    const chunks = options ? chunkFileWithSummary(corpusName, relFile, content, options).chunks : chunkFile(corpusName, relFile, content);
     allChunks.push(...chunks);
   }
 
   return allChunks;
+}
+
+export async function scanAndChunkCorpusWithSummary(
+  corpusName: string,
+  corpusRoot: string,
+  options: ChunkingOptions
+): Promise<{ chunks: CodeChunk[]; oversizedLineCount: number }> {
+  const relFiles = await walkDir(corpusRoot, corpusRoot);
+  const chunks: CodeChunk[] = [];
+  let oversizedLineCount = 0;
+  for (const relFile of relFiles) {
+    const content = await fs.readFile(path.join(corpusRoot, relFile), 'utf8');
+    const result = chunkFileWithSummary(corpusName, relFile, content, options);
+    chunks.push(...result.chunks);
+    oversizedLineCount += result.oversizedLineCount;
+  }
+  return { chunks, oversizedLineCount };
 }

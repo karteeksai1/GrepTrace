@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { IngestVectorStore, ingestCorpus } from '@greptrace/rag';
 import { EmbeddingClient } from '@greptrace/core';
+import { chunkFile } from '@greptrace/rag';
 
 function createPool(rows: Array<Record<string, unknown>>) {
   const queries: string[] = [];
@@ -26,6 +27,8 @@ async function createCorpus(): Promise<{ root: string; cleanup: () => Promise<vo
   await fs.writeFile(path.join(root, 'main.py'), 'def hello():\n    return "world"\n');
   return { root, cleanup: () => fs.rm(root, { recursive: true, force: true }) };
 }
+
+const currentChunkId = chunkFile('fastapi', 'main.py', 'def hello():\n    return "world"\n')[0].id;
 
 function fakeEmbeddingClient(): EmbeddingClient {
   return {
@@ -50,7 +53,7 @@ describe('RAG ingestion controls', () => {
   it('dry-run does not embed or write', async () => {
     const corpus = await createCorpus();
     try {
-      const db = createPool([{ id: 'fastapi_main.py_1_3' }, { id: 'fastapi_old.py_10_20' }]);
+      const db = createPool([{ id: currentChunkId }, { id: 'fastapi_old.py_10_20' }]);
       const embeddingClient = fakeEmbeddingClient();
       const vectorStore = fakeVectorStore();
       const summary = await ingestCorpus({
@@ -81,7 +84,7 @@ describe('RAG ingestion controls', () => {
   it('prunes only stale ids and records the completed ingestion', async () => {
     const corpus = await createCorpus();
     try {
-      const db = createPool([{ id: 'fastapi_main.py_1_3' }, { id: 'fastapi_old.py_10_20' }]);
+      const db = createPool([{ id: currentChunkId }, { id: 'fastapi_old.py_10_20' }]);
       const vectorStore = fakeVectorStore();
       const summary = await ingestCorpus({
         corpus: 'fastapi',
@@ -109,7 +112,7 @@ describe('RAG ingestion controls', () => {
     const corpus = await createCorpus();
     try {
       const db = createPool([
-        { id: 'fastapi_main.py_1_3', file: 'main.py', start_line: 1, end_line: 3, embedded: true },
+        { id: currentChunkId, file: 'main.py', start_line: 1, end_line: 3, embedded: true },
         { id: 'stale', file: 'missing.py', start_line: 1, end_line: 2, embedded: true }
       ]);
       const vectorStore = fakeVectorStore();

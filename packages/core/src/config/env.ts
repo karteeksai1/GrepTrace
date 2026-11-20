@@ -29,6 +29,8 @@ const envSchema = z.object({
   PINECONE_NAMESPACE_EXPRESS: z.string().min(1, 'PINECONE_NAMESPACE_EXPRESS is required'),
   PINECONE_NAMESPACE_FASTAPI: z.string().min(1, 'PINECONE_NAMESPACE_FASTAPI is required'),
   RAG_TOP_K: z.coerce.number().int().positive().default(8),
+  CHUNK_MAX_TOKENS: z.coerce.number().int().positive().default(400),
+  CHUNK_OVERLAP_LINES: z.coerce.number().int().min(0).default(5),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   DATABASE_URL_DIRECT: z.string().min(1, 'DATABASE_URL_DIRECT is required')
 });

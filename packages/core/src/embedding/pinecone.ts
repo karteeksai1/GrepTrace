@@ -141,7 +141,8 @@ export class PineconeEmbeddingClient implements EmbeddingClient {
 
     return {
       embeddings: allVectors,
-      totalTokens: accumulatedTokens
+      totalTokens: accumulatedTokens,
+      truncatedCount
     };
   }
 }

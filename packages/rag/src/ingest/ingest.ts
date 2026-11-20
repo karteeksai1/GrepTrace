@@ -1,15 +1,17 @@
 import { Pinecone } from '@pinecone-database/pinecone';
 import fs from 'node:fs/promises';
 import pg from 'pg';
-import { EmbeddingClient, getCorpusIngestion, getModelSpec, prepareInputTexts, recordCorpusIngestion } from '@greptrace/core';
+import { EmbeddingClient, estimateEmbeddingTokens, getCorpusIngestion, getModelSpec, prepareInputTexts, recordCorpusIngestion } from '@greptrace/core';
 import { CodeChunk } from '../chunking/types.js';
-import { scanAndChunkCorpus } from './scanner.js';
+import { scanAndChunkCorpusWithSummary } from './scanner.js';
 
 export interface IngestOptions {
   corpus: string;
   corpusRoot: string;
   commitHash: string;
   embeddingModel: string;
+  chunkMaxTokens?: number;
+  chunkOverlapLines?: number;
   pool: pg.Pool;
   embeddingClient?: EmbeddingClient;
   vectorStore?: IngestVectorStore;
@@ -35,6 +37,9 @@ export interface IngestSummary {
   totalTokens: number;
   truncatedInputs: number;
   truncatedPercentage: number;
+  maxChunkTokens: number;
+  medianChunkTokens: number;
+  oversizedLineCount: number;
   prunedChunks: number;
   verified?: VerifySummary;
 }
@@ -77,6 +82,8 @@ interface IngestPlan {
   staleIds: string[];
   estimatedTokens: number;
   truncatedInputs: number;
+  maxChunkTokens: number;
+  medianChunkTokens: number;
 }
 
 function createPineconeVectorStore(
@@ -101,20 +108,23 @@ function createIngestPlan(chunks: CodeChunk[], existingIds: Set<string>, embeddi
   const modelSpec = getModelSpec(embeddingModel);
   const texts = chunks.map(formatChunkForEmbedding);
   const { truncatedCount } = prepareInputTexts(texts, modelSpec.maxTokens);
+  const tokenCounts = texts.map(estimateEmbeddingTokens).sort((a, b) => a - b);
   return {
     chunks,
     existingIds,
     currentIds,
     newChunks: chunks.filter((chunk) => !existingIds.has(chunk.id)),
     staleIds: [...existingIds].filter((id) => !currentIds.has(id)),
-    estimatedTokens: texts.reduce((total, text) => total + Math.ceil(text.length / 4), 0),
-    truncatedInputs: truncatedCount
+    estimatedTokens: texts.reduce((total, text) => total + estimateEmbeddingTokens(text), 0),
+    truncatedInputs: truncatedCount,
+    maxChunkTokens: tokenCounts[tokenCounts.length - 1] ?? 0,
+    medianChunkTokens: tokenCounts.length === 0 ? 0 : tokenCounts[Math.floor((tokenCounts.length - 1) / 2)]
   };
 }
 
 function printIngestPlan(corpus: string, plan: IngestPlan): void {
   process.stdout.write(
-    `Corpus '${corpus}': total chunks ${plan.chunks.length}, already present ${plan.existingIds.size}, to ingest ${plan.newChunks.length}, stale ${plan.staleIds.length}, estimated tokens ${plan.estimatedTokens}, over token limit ${plan.truncatedInputs}.\n`
+    `Corpus '${corpus}': chunks ${plan.chunks.length}, over embedding limit ${plan.truncatedInputs}, max tokens ${plan.maxChunkTokens}, median tokens ${plan.medianChunkTokens}, estimated embedding tokens ${plan.estimatedTokens}, stale ${plan.staleIds.length}, to ingest ${plan.newChunks.length}.\n`
   );
 }
 
@@ -188,8 +198,8 @@ async function recordSuccessfulIngestion(options: IngestOptions, plan: IngestPla
     commit_hash: options.commitHash,
     pinecone_namespace: options.pineconeNamespace,
     embedding_model: options.embeddingModel,
-    chunk_max_tokens: null,
-    chunk_overlap_lines: null,
+    chunk_max_tokens: options.chunkMaxTokens ?? 400,
+    chunk_overlap_lines: options.chunkOverlapLines ?? 5,
     chunk_count: plan.chunks.length
   });
 }
@@ -230,7 +240,10 @@ async function insertChunksToPostgres(
 }
 
 export async function ingestCorpus(options: IngestOptions): Promise<IngestSummary> {
-  const allChunks = await scanAndChunkCorpus(options.corpus, options.corpusRoot);
+  const chunkMaxTokens = options.chunkMaxTokens ?? 400;
+  const chunkOverlapLines = options.chunkOverlapLines ?? 5;
+  const scanned = await scanAndChunkCorpusWithSummary(options.corpus, options.corpusRoot, { maxTokens: chunkMaxTokens, overlapLines: chunkOverlapLines });
+  const allChunks = scanned.chunks;
   const existingIds = await getExistingChunkIds(options.pool, options.corpus);
   const plan = createIngestPlan(allChunks, existingIds, options.embeddingModel);
   printIngestPlan(options.corpus, plan);
@@ -246,6 +259,9 @@ export async function ingestCorpus(options: IngestOptions): Promise<IngestSummar
     totalTokens: 0,
     truncatedInputs: plan.truncatedInputs,
     truncatedPercentage: percentage,
+    maxChunkTokens: plan.maxChunkTokens,
+    medianChunkTokens: plan.medianChunkTokens,
+    oversizedLineCount: scanned.oversizedLineCount,
     prunedChunks
   });
   if (options.dryRun) {
