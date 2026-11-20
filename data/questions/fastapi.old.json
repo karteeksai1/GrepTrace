@@ -1,0 +1,44 @@
+[
+  {
+    "id": "fastapi-include-router",
+    "corpus": "fastapi",
+    "type": "identifier_lookup",
+    "question": "Where is the include_router method defined on the FastAPI class and how does it delegate to the underlying router?",
+    "reference_answer": "include_router is defined in fastapi/applications.py on the FastAPI class. It accepts an APIRouter instance alongside prefix, tags, dependencies, and configuration options, and delegates the call directly to self.router.include_router(...).",
+    "ground_truth": [
+      {
+        "file": "fastapi/applications.py",
+        "start_line": 1483,
+        "end_line": 1687
+      }
+    ]
+  },
+  {
+    "id": "fastapi-add-api-route",
+    "corpus": "fastapi",
+    "type": "conceptual",
+    "question": "How does APIRouter.add_api_route configure and register routes in FastAPI?",
+    "reference_answer": "In fastapi/routing.py within APIRouter.add_api_route, it resolves the route class (using route_class_override or self.route_class), combines responses and tags, resolves the default response class, and instantiates an APIRoute to add to self.routes.",
+    "ground_truth": [
+      {
+        "file": "fastapi/routing.py",
+        "start_line": 2994,
+        "end_line": 3077
+      }
+    ]
+  },
+  {
+    "id": "fastapi-solve-dependencies",
+    "corpus": "fastapi",
+    "type": "multi_hop",
+    "question": "How does solve_dependencies manage dependency caching and async exit stacks when resolving request parameters?",
+    "reference_answer": "In fastapi/dependencies/utils.py within solve_dependencies, it extracts the request async exit stacks (fastapi_inner_astack and fastapi_function_astack) from the request scope, checks and populates dependency_cache with cached dependency values across scopes, executes dependencies, and returns a SolvedDependency containing values, errors, background_tasks, and response.",
+    "ground_truth": [
+      {
+        "file": "fastapi/dependencies/utils.py",
+        "start_line": 661,
+        "end_line": 804
+      }
+    ]
+  }
+]
