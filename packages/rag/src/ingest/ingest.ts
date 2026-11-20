@@ -1,35 +1,197 @@
 import { Pinecone } from '@pinecone-database/pinecone';
+import fs from 'node:fs/promises';
 import pg from 'pg';
-import { EmbeddingClient } from '@greptrace/core';
+import { EmbeddingClient, getCorpusIngestion, getModelSpec, prepareInputTexts, recordCorpusIngestion } from '@greptrace/core';
 import { CodeChunk } from '../chunking/types.js';
 import { scanAndChunkCorpus } from './scanner.js';
 
 export interface IngestOptions {
   corpus: string;
   corpusRoot: string;
+  commitHash: string;
+  embeddingModel: string;
   pool: pg.Pool;
-  embeddingClient: EmbeddingClient;
+  embeddingClient?: EmbeddingClient;
+  vectorStore?: IngestVectorStore;
   pineconeApiKey: string;
   pineconeIndexName: string;
   pineconeNamespace: string;
   batchSize?: number;
+  dryRun?: boolean;
+  prune?: boolean;
+  yes?: boolean;
+  confirmPrune?: () => Promise<boolean>;
+  verify?: boolean;
 }
 
 export interface IngestSummary {
   corpus: string;
   totalChunks: number;
+  alreadyPresent: number;
   newChunks: number;
   ingestedChunks: number;
+  staleChunks: number;
+  estimatedTokens: number;
   totalTokens: number;
+  truncatedInputs: number;
+  truncatedPercentage: number;
+  prunedChunks: number;
+  verified?: VerifySummary;
+}
+
+export interface VerifySummary {
+  corpus: string;
+  recordedCommit: string | null;
+  currentCommit: string;
+  invalidRanges: string[];
+  staleIds: string[];
+  embeddedRows: number;
+  vectorCount: number;
+  vectorCountMatches: boolean;
+  mismatches: string[];
+}
+
+interface StoredChunk {
+  id: string;
+  file: string;
+  start_line: number;
+  end_line: number;
+  embedded: boolean;
 }
 
 function formatChunkForEmbedding(chunk: CodeChunk): string {
   return `File: ${chunk.file} (lines ${chunk.start_line}-${chunk.end_line})\n${chunk.content}`;
 }
 
+export interface IngestVectorStore {
+  upsert(records: Array<{ id: string; values: number[]; metadata: Record<string, string | number> }>): Promise<void>;
+  delete(ids: string[]): Promise<void>;
+  count(): Promise<number>;
+}
+
+interface IngestPlan {
+  chunks: CodeChunk[];
+  existingIds: Set<string>;
+  currentIds: Set<string>;
+  newChunks: CodeChunk[];
+  staleIds: string[];
+  estimatedTokens: number;
+  truncatedInputs: number;
+}
+
+function createPineconeVectorStore(
+  apiKey: string,
+  indexName: string,
+  namespace: string
+): IngestVectorStore {
+  const pc = new Pinecone({ apiKey });
+  const index = pc.index(indexName).namespace(namespace);
+  return {
+    upsert: async (records) => index.upsert({ records }),
+    delete: async (ids) => index.deleteMany({ ids }),
+    count: async () => {
+      const stats = await index.describeIndexStats();
+      return stats.namespaces?.[namespace]?.recordCount ?? 0;
+    }
+  };
+}
+
+function createIngestPlan(chunks: CodeChunk[], existingIds: Set<string>, embeddingModel: string): IngestPlan {
+  const currentIds = new Set(chunks.map((chunk) => chunk.id));
+  const modelSpec = getModelSpec(embeddingModel);
+  const texts = chunks.map(formatChunkForEmbedding);
+  const { truncatedCount } = prepareInputTexts(texts, modelSpec.maxTokens);
+  return {
+    chunks,
+    existingIds,
+    currentIds,
+    newChunks: chunks.filter((chunk) => !existingIds.has(chunk.id)),
+    staleIds: [...existingIds].filter((id) => !currentIds.has(id)),
+    estimatedTokens: texts.reduce((total, text) => total + Math.ceil(text.length / 4), 0),
+    truncatedInputs: truncatedCount
+  };
+}
+
+function printIngestPlan(corpus: string, plan: IngestPlan): void {
+  process.stdout.write(
+    `Corpus '${corpus}': total chunks ${plan.chunks.length}, already present ${plan.existingIds.size}, to ingest ${plan.newChunks.length}, stale ${plan.staleIds.length}, estimated tokens ${plan.estimatedTokens}, over token limit ${plan.truncatedInputs}.\n`
+  );
+}
+
 async function getExistingChunkIds(pool: pg.Pool, corpus: string): Promise<Set<string>> {
   const result = await pool.query('SELECT id FROM chunks WHERE corpus = $1', [corpus]);
   return new Set(result.rows.map((r) => r.id));
+}
+
+async function getStoredChunks(pool: pg.Pool, corpus: string): Promise<StoredChunk[]> {
+  const result = await pool.query(
+    'SELECT id, file, start_line, end_line, embedding IS NOT NULL AS embedded FROM chunks WHERE corpus = $1',
+    [corpus]
+  );
+  return result.rows.map((row) => ({
+    id: String(row.id),
+    file: String(row.file),
+    start_line: Number(row.start_line),
+    end_line: Number(row.end_line),
+    embedded: Boolean(row.embedded)
+  }));
+}
+
+async function pruneStaleChunks(options: IngestOptions, plan: IngestPlan, vectorStore: IngestVectorStore): Promise<number> {
+  if (plan.staleIds.length === 0) return 0;
+  if (!options.yes && !(await (options.confirmPrune?.() ?? Promise.resolve(false)))) {
+    throw new Error('Prune cancelled. Re-run with --yes or confirm interactively.');
+  }
+  const batchSize = Math.max(1, options.batchSize ?? 32);
+  for (let i = 0; i < plan.staleIds.length; i += batchSize) {
+    await vectorStore.delete(plan.staleIds.slice(i, i + batchSize));
+  }
+  await options.pool.query('DELETE FROM chunks WHERE corpus = $1 AND id = ANY($2::text[])', [options.corpus, plan.staleIds]);
+  return plan.staleIds.length;
+}
+
+async function verifyStoredChunks(options: IngestOptions, plan: IngestPlan, vectorStore: IngestVectorStore): Promise<VerifySummary> {
+  const rows = await getStoredChunks(options.pool, options.corpus);
+  const fileLines = new Map<string, number>();
+  const invalidRanges: string[] = [];
+  for (const row of rows) {
+    if (!fileLines.has(row.file)) {
+      try {
+        const content = await fs.readFile(`${options.corpusRoot}/${row.file}`, 'utf8');
+        fileLines.set(row.file, content.split(/\r?\n/).length);
+      } catch {
+        fileLines.set(row.file, 0);
+      }
+    }
+    const lineCount = fileLines.get(row.file) ?? 0;
+    if (lineCount === 0 || row.start_line < 1 || row.end_line < row.start_line || row.end_line > lineCount) {
+      invalidRanges.push(`${row.file}:${row.start_line}-${row.end_line}`);
+    }
+  }
+  const staleIds = rows.map((row) => row.id).filter((id) => !plan.currentIds.has(id));
+  const embeddedRows = rows.filter((row) => plan.currentIds.has(row.id) && row.embedded).length;
+  const vectorCount = await vectorStore.count();
+  const ingestion = await getCorpusIngestion(options.pool, options.corpus);
+  const mismatches: string[] = [];
+  if (!ingestion) mismatches.push('No corpus_ingestions row exists.');
+  else if (ingestion.commit_hash !== options.commitHash) mismatches.push(`Recorded commit ${ingestion.commit_hash} differs from checked-out commit ${options.commitHash}.`);
+  if (invalidRanges.length > 0) mismatches.push(`${invalidRanges.length} stored chunk ranges do not exist in the checkout.`);
+  if (staleIds.length > 0) mismatches.push(`${staleIds.length} stale chunk rows exist.`);
+  if (vectorCount !== embeddedRows) mismatches.push(`Pinecone vectors ${vectorCount} do not match embedded current rows ${embeddedRows}.`);
+  return { corpus: options.corpus, recordedCommit: ingestion?.commit_hash ?? null, currentCommit: options.commitHash, invalidRanges, staleIds, embeddedRows, vectorCount, vectorCountMatches: vectorCount === embeddedRows, mismatches };
+}
+
+async function recordSuccessfulIngestion(options: IngestOptions, plan: IngestPlan): Promise<void> {
+  if (plan.truncatedInputs > 0) return;
+  await recordCorpusIngestion(options.pool, {
+    corpus: options.corpus,
+    commit_hash: options.commitHash,
+    pinecone_namespace: options.pineconeNamespace,
+    embedding_model: options.embeddingModel,
+    chunk_max_tokens: null,
+    chunk_overlap_lines: null,
+    chunk_count: plan.chunks.length
+  });
 }
 
 async function insertChunksToPostgres(
@@ -70,31 +232,54 @@ async function insertChunksToPostgres(
 export async function ingestCorpus(options: IngestOptions): Promise<IngestSummary> {
   const allChunks = await scanAndChunkCorpus(options.corpus, options.corpusRoot);
   const existingIds = await getExistingChunkIds(options.pool, options.corpus);
-  const newChunks = allChunks.filter((c) => !existingIds.has(c.id));
-
-  process.stdout.write(
-    `Corpus '${options.corpus}': ${allChunks.length} total chunks, ${existingIds.size} already in database, ${newChunks.length} to ingest.\n`
-  );
-
-  if (newChunks.length === 0) {
-    return {
-      corpus: options.corpus,
-      totalChunks: allChunks.length,
-      newChunks: 0,
-      ingestedChunks: 0,
-      totalTokens: 0
-    };
+  const plan = createIngestPlan(allChunks, existingIds, options.embeddingModel);
+  printIngestPlan(options.corpus, plan);
+  const percentage = allChunks.length === 0 ? 0 : (plan.truncatedInputs / allChunks.length) * 100;
+  const emptySummary = (prunedChunks = 0): IngestSummary => ({
+    corpus: options.corpus,
+    totalChunks: allChunks.length,
+    alreadyPresent: existingIds.size,
+    newChunks: plan.newChunks.length,
+    ingestedChunks: 0,
+    staleChunks: plan.staleIds.length,
+    estimatedTokens: plan.estimatedTokens,
+    totalTokens: 0,
+    truncatedInputs: plan.truncatedInputs,
+    truncatedPercentage: percentage,
+    prunedChunks
+  });
+  if (options.dryRun) {
+    if (options.prune) {
+      const ingestion = await getCorpusIngestion(options.pool, options.corpus);
+      process.stdout.write(`Recorded ingestion commit: ${ingestion?.commit_hash ?? 'none'}\n`);
+    }
+    return emptySummary();
   }
-
-  const pc = new Pinecone({ apiKey: options.pineconeApiKey });
-  const index = pc.index(options.pineconeIndexName).namespace(options.pineconeNamespace);
-
+  const vectorStore = options.vectorStore ?? createPineconeVectorStore(options.pineconeApiKey, options.pineconeIndexName, options.pineconeNamespace);
+  let prunedChunks = 0;
+  if (options.prune) {
+    const ingestion = await getCorpusIngestion(options.pool, options.corpus);
+    process.stdout.write(`Recorded ingestion commit: ${ingestion?.commit_hash ?? 'none'}\n`);
+    prunedChunks = await pruneStaleChunks(options, plan, vectorStore);
+  }
+  if (options.verify) {
+    const verified = await verifyStoredChunks(options, plan, vectorStore);
+    for (const mismatch of verified.mismatches) process.stdout.write(`Verify mismatch: ${mismatch}\n`);
+    if (verified.mismatches.length === 0) process.stdout.write('Verify: no mismatches found.\n');
+    return { ...emptySummary(prunedChunks), verified };
+  }
+  if (plan.newChunks.length === 0) {
+    await recordSuccessfulIngestion(options, plan);
+    return emptySummary(prunedChunks);
+  }
+  if (!options.embeddingClient) throw new Error('An embedding client is required for non-dry-run ingestion.');
+  await options.embeddingClient.verifyStartup();
   const batchSize = Math.max(1, options.batchSize ?? 32);
   let accumulatedTokens = 0;
   let ingestedCount = 0;
 
-  for (let i = 0; i < newChunks.length; i += batchSize) {
-    const batch = newChunks.slice(i, i + batchSize);
+  for (let i = 0; i < plan.newChunks.length; i += batchSize) {
+    const batch = plan.newChunks.slice(i, i + batchSize);
     const texts = batch.map(formatChunkForEmbedding);
 
     const embedRes = await options.embeddingClient.embed(texts, 'passage');
@@ -113,17 +298,11 @@ export async function ingestCorpus(options: IngestOptions): Promise<IngestSummar
       }
     }));
 
-    await index.upsert({ records: pineconeRecords });
+    await vectorStore.upsert(pineconeRecords);
     ingestedCount += batch.length;
 
-    process.stdout.write(`Progress: ${ingestedCount} / ${newChunks.length} chunks ingested...\n`);
+    process.stdout.write(`Progress: ${ingestedCount} / ${plan.newChunks.length} chunks ingested...\n`);
   }
-
-  return {
-    corpus: options.corpus,
-    totalChunks: allChunks.length,
-    newChunks: newChunks.length,
-    ingestedChunks: ingestedCount,
-    totalTokens: accumulatedTokens
-  };
+  await recordSuccessfulIngestion(options, plan);
+  return { ...emptySummary(prunedChunks), ingestedChunks: ingestedCount, totalTokens: accumulatedTokens };
 }

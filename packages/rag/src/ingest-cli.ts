@@ -1,5 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import readline from 'node:readline/promises';
 import {
   CorporaConfig,
   createEmbeddingClient,
@@ -12,6 +14,10 @@ import { ingestCorpus } from './ingest/ingest.js';
 
 interface CliArgs {
   corpus?: string;
+  dryRun?: boolean;
+  prune?: boolean;
+  verify?: boolean;
+  yes?: boolean;
 }
 
 function parseArgs(args: string[]): CliArgs {
@@ -19,9 +25,32 @@ function parseArgs(args: string[]): CliArgs {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--corpus' && args[i + 1]) {
       result.corpus = args[++i];
+    } else if (args[i] === '--dry-run') {
+      result.dryRun = true;
+    } else if (args[i] === '--prune') {
+      result.prune = true;
+    } else if (args[i] === '--verify') {
+      result.verify = true;
+    } else if (args[i] === '--yes') {
+      result.yes = true;
     }
   }
   return result;
+}
+
+function getCorpusCommit(corpusRoot: string): string {
+  return execFileSync('git', ['-C', corpusRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+}
+
+async function confirmPrune(): Promise<boolean> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return false;
+  const input = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await input.question('Delete stale chunk ids from Pinecone and PostgreSQL? Type yes to continue: ');
+    return answer.trim().toLowerCase() === 'yes';
+  } finally {
+    input.close();
+  }
 }
 
 export async function main(): Promise<void> {
@@ -43,12 +72,12 @@ export async function main(): Promise<void> {
   }
 
   const corpusRoot = path.resolve(rootDir, spec.path);
+  const commitHash = getCorpusCommit(corpusRoot);
   const pool = createPool(getAppDatabaseUrl(), 2);
 
   try {
     await warmUpDatabase(pool);
-    const embeddingClient = createEmbeddingClient();
-    await embeddingClient.verifyStartup();
+    const embeddingClient = args.dryRun || args.verify ? undefined : createEmbeddingClient();
 
     const namespace =
       args.corpus === 'express'
@@ -61,19 +90,35 @@ export async function main(): Promise<void> {
     const summary = await ingestCorpus({
       corpus: args.corpus,
       corpusRoot,
+      commitHash,
+      embeddingModel: env.EMBEDDING_MODEL,
       pool,
       embeddingClient,
       pineconeApiKey: env.PINECONE_API_KEY,
       pineconeIndexName: env.PINECONE_INDEX_NAME,
       pineconeNamespace: namespace,
-      batchSize: 32
+      batchSize: 32,
+      dryRun: args.dryRun,
+      prune: args.prune,
+      verify: args.verify,
+      yes: args.yes,
+      confirmPrune
     });
 
     process.stdout.write(`\n=== Ingestion Complete ===\n`);
     process.stdout.write(`Corpus: ${summary.corpus}\n`);
     process.stdout.write(`Total chunks: ${summary.totalChunks}\n`);
+    process.stdout.write(`Already present: ${summary.alreadyPresent}\n`);
+    process.stdout.write(`To ingest: ${summary.newChunks}\n`);
+    process.stdout.write(`Stale: ${summary.staleChunks}\n`);
+    process.stdout.write(`Estimated tokens: ${summary.estimatedTokens}\n`);
     process.stdout.write(`Newly ingested: ${summary.ingestedChunks}\n`);
     process.stdout.write(`Tokens used: ${summary.totalTokens}\n`);
+    process.stdout.write(`Truncated inputs: ${summary.truncatedInputs} (${summary.truncatedPercentage.toFixed(2)}%)\n`);
+    process.stdout.write(`Pruned chunks: ${summary.prunedChunks}\n`);
+    if (summary.verified) {
+      process.stdout.write(`Verify mismatches: ${summary.verified.mismatches.length}\n`);
+    }
   } finally {
     await pool.end();
   }

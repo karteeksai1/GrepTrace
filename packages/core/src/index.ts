@@ -3,6 +3,7 @@ export * from './config/env.js';
 export * from './db/client.js';
 export * from './db/migrate.js';
 export * from './db/health.js';
+export * from './db/corpus-ingestions.js';
 export * from './logger/trace-logger.js';
 export * from './llm/index.js';
 export * from './embedding/index.js';

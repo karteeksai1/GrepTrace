@@ -62,6 +62,30 @@ export function getGitCommit(dir?: string): string {
   }
 }
 
+export async function assertRagCorpusCommits(
+  pool: pg.Pool,
+  corpora: string[],
+  corporaConfig: CorporaConfig,
+  rootDir: string
+): Promise<void> {
+  for (const corpus of corpora) {
+    const spec = corporaConfig.corpora[corpus];
+    const corpusRoot = path.resolve(rootDir, spec.path);
+    const currentCommit = getGitCommit(corpusRoot);
+    const result = await pool.query(
+      'SELECT commit_hash FROM corpus_ingestions WHERE corpus = $1',
+      [corpus]
+    );
+    const recordedCommit = result.rows[0]?.commit_hash as string | undefined;
+    if (!recordedCommit) {
+      throw new Error(`RAG benchmark refused for corpus '${corpus}': no corpus_ingestions row exists. Run ingest for this corpus first.`);
+    }
+    if (recordedCommit !== currentCommit) {
+      throw new Error(`RAG benchmark refused for corpus '${corpus}': ingested commit ${recordedCommit} differs from checked-out commit ${currentCommit}. Run ingest for this corpus first.`);
+    }
+  }
+}
+
 export async function loadCorporaConfig(rootDir: string): Promise<CorporaConfig> {
   const configPath = path.join(rootDir, 'config', 'corpora.json');
   const raw = await fs.readFile(configPath, 'utf8');
@@ -362,8 +386,11 @@ export async function runBenchmark(
     throw new Error('Database health check failed');
   }
 
-  const embeddingClient = createEmbeddingClient();
-  await embeddingClient.verifyStartup();
+  if (options.systems.includes('rag')) {
+    await assertRagCorpusCommits(pool, options.corpora, corporaConfig, rootDir);
+    const embeddingClient = createEmbeddingClient();
+    await embeddingClient.verifyStartup();
+  }
 
   const batchName = options.batchName ?? `batch_${new Date().toISOString().replace(/[:.]/g, '-')}`;
   const gitCommitBenchmark = getGitCommit(rootDir);

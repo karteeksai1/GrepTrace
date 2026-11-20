@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assertRagCorpusCommits,
   buildRunMatrix,
   getCompletedRunKeys
 } from '../packages/eval/src/runner/batch-runner.js';
@@ -66,5 +67,15 @@ describe('Eval Resumability and Matrix Generation', () => {
     const completed = await getCompletedRunKeys(mockPool, 'batch-123');
     expect(completed.has('agentic_express_express-q1_test-model_1')).toBe(true);
     expect(completed.has('rag_express_express-q1_test-model_1')).toBe(false);
+  });
+
+  it('refuses RAG benchmarking without a recorded corpus ingestion', async () => {
+    const mockPool = { query: async () => ({ rows: [] }) } as unknown as pg.Pool;
+    await expect(assertRagCorpusCommits(
+      mockPool,
+      ['express'],
+      { corpora: { express: { path: 'corpora/express', commit: 'unused' } } },
+      process.cwd()
+    )).rejects.toThrow(/no corpus_ingestions row exists/);
   });
 });
